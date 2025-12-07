@@ -1,0 +1,9 @@
+services:
+  - name: auto-filter-bot
+    type: web
+    env: python
+    # Ensure all required packages are installed
+    buildCommand: "pip install -r requirements.txt" 
+    # Starts your main application file
+    startCommand: "python bot.py" 
+    plan: free
