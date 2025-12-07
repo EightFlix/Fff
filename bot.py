@@ -89,16 +89,21 @@ class Bot(Client):
         logger.info("Bot Stopped. Bye!")
 
 # -------------------------------------------------------------
-# यहाँ मुख्य सुधार (Fix) है
+# FINAL FIX FOR PYTHON 3.11 EVENT LOOP
 # -------------------------------------------------------------
 if __name__ == "__main__":
     try:
-        # Python 3.11+ के लिए Event Loop Fix
-        if not asyncio.get_event_loop_policy().get_event_loop().is_running():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+        # 1. नया लूप बनाएँ
+        loop = asyncio.new_event_loop()
         
+        # 2. इस लूप को ग्लोबल सेट करें
+        asyncio.set_event_loop(loop)
+        
+        # 3. अब बॉट बनाएँ (अब यह ऊपर सेट किए गए लूप का उपयोग करेगा)
         app = Bot()
+        
+        # 4. बॉट चलाएँ
         app.run()
+        
     except Exception as e:
         logger.error(f"Runtime Error: {e}")
