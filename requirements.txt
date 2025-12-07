@@ -1,0 +1,14 @@
+hydrogram
+tgcrypto
+motor  # Asynchronous MongoDB driver (Replaces pymongo for better performance)
+cinemagoer
+shortzy
+aiohttp
+aiofiles
+speedtest-cli
+uvloop
+requests
+qrcode
+Pillow
+pytz
+humanize # Optional: for readable time/size strings
