@@ -3,6 +3,8 @@ import logging.config
 import os
 import time
 import asyncio
+import pytz # Timezone के लिए
+from datetime import datetime # Timezone के लिए
 from hydrogram import Client, __version__
 from hydrogram.raw.all import layer
 from hydrogram.enums import ParseMode
@@ -41,6 +43,10 @@ class Bot(Client):
         )
 
     async def start(self):
+        # --- FIX: Uptime Calculation Start ---
+        # बॉट स्टार्ट होते ही समय नोट करें, ताकि Uptime 0 से शुरू हो
+        temp.START_TIME = time.time() 
+        
         await super().start()
         me = await self.get_me()
         temp.ME = me.id
@@ -53,7 +59,7 @@ class Bot(Client):
         temp.BANNED_USERS = b_users
         temp.BANNED_CHATS = b_chats
         
-        # Restart Message Logic (पुराने मैसेज को एडिट करना)
+        # Restart Message Logic
         if os.path.exists('restart.txt'):
             try:
                 with open('restart.txt', 'r') as file:
@@ -73,13 +79,18 @@ class Bot(Client):
         # Premium Check Task शुरू करें
         asyncio.create_task(check_premium(self))
 
-        # --- NEW: Send Startup Message to Admins ---
+        # --- FIX: Indian Time Zone (IST) ---
+        # Asia/Kolkata टाइमज़ोन सेट करें
+        timezone = pytz.timezone("Asia/Kolkata")
+        now = datetime.now(timezone)
+        formatted_time = now.strftime("%I:%M %p %d/%m/%Y")
+
         startup_msg = (
             f"<b>🤖 Bot Started!</b>\n\n"
             f"<b>Name:</b> {me.mention}\n"
             f"<b>Username:</b> @{me.username}\n"
             f"<b>Hydrogram:</b> v{__version__}\n"
-            f"<b>Time:</b> {time.strftime('%I:%M %p %d/%m/%Y')}"
+            f"<b>Time:</b> {formatted_time} (IST)"
         )
         
         # सभी एडमिन को मैसेज भेजें
@@ -93,7 +104,7 @@ class Bot(Client):
         try:
             await self.send_message(
                 chat_id=LOG_CHANNEL,
-                text=f"<b>🔥 {me.mention} Bot Restarted!</b>\n\n<b>Hydrogram Version:</b> <code>v{__version__}</code>\n<b>Layer:</b> <code>{layer}</code>"
+                text=f"<b>🔥 {me.mention} Bot Restarted!</b>\n\n<b>Hydrogram Version:</b> <code>v{__version__}</code>\n<b>Layer:</b> <code>{layer}</code>\n<b>Time:</b> {formatted_time}"
             )
         except Exception as e:
             logger.error(f"Bot failed to send message to LOG_CHANNEL: {e}")
