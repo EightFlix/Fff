@@ -4,7 +4,6 @@ import math
 import logging
 import qrcode
 import os
-# FIX: pyrogram -> hydrogram
 from hydrogram.errors import ListenerTimeout
 from datetime import datetime
 from info import (
@@ -12,7 +11,6 @@ from info import (
     ADMINS, MAX_BTN, BIN_CHANNEL, IS_STREAM, DELETE_TIME, 
     FILMS_LINK, LOG_CHANNEL, SUPPORT_GROUP, UPDATES_LINK
 )
-# FIX: pyrogram -> hydrogram
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto
 from hydrogram import Client, filters, enums
 from utils import (
@@ -68,7 +66,6 @@ async def group_search(client, message):
             
         if message.text.startswith("/"): return
         
-        # Admin checks
         if '@admin' in message.text.lower() or '@admins' in message.text.lower():
             if await is_check_admin(client, message.chat.id, message.from_user.id): return
             return
@@ -123,7 +120,6 @@ async def next_page(bot, query):
         for file in files:
             btn.append([InlineKeyboardButton(f"{get_size(file['file_size'])} - {file['file_name']}", callback_data=f"file#{file['_id']}")])
 
-    # Send All Button (Direct)
     btn.insert(0, [
         InlineKeyboardButton("♻️ sᴇɴᴅ ᴀʟʟ", url=f"https://t.me/{temp.U_NAME}?start=all_{query.message.chat.id}_{key}"),
         InlineKeyboardButton("⚙️ ǫᴜᴀʟɪᴛʏ", callback_data=f"quality#{key}#{req}#{offset}")
@@ -209,7 +205,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
     elif query.data.startswith("stream"):
         file_id = query.data.split('#', 1)[1]
         msg = await client.send_cached_media(chat_id=BIN_CHANNEL, file_id=file_id)
-        base_url = URL[:-1] if URL.endswith('/') else URL
+        from info import URL as SITE_URL
+        base_url = SITE_URL[:-1] if SITE_URL.endswith('/') else SITE_URL
         watch = f"{base_url}/watch/{msg.id}"
         download = f"{base_url}/download/{msg.id}"
         btn=[[
@@ -269,9 +266,26 @@ async def cb_handler(client: Client, query: CallbackQuery):
         ]]
         await query.message.edit_text(script.START_TXT.format(query.from_user.mention, get_wish()), reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML)
 
+    # --- HELP BUTTON FIXED HERE ---
     elif query.data == "help":
-        buttons = [[InlineKeyboardButton('🏄 Back', callback_data='start')]]
+        buttons = [[
+            InlineKeyboardButton('🙋🏻‍♀️ User', callback_data='user_command'),
+            InlineKeyboardButton('🦹 Admin', callback_data='admin_command')
+        ],[
+            InlineKeyboardButton('🏄 Back', callback_data='start')
+        ]]
         await query.message.edit_text(script.HELP_TXT.format(query.from_user.mention), reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML)
+
+    # --- USER/ADMIN COMMANDS RESTORED ---
+    elif query.data == "user_command":
+        buttons = [[InlineKeyboardButton('🏄 Back', callback_data='help')]]
+        await query.message.edit_text(script.USER_COMMAND_TXT, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML)
+        
+    elif query.data == "admin_command":
+        if query.from_user.id not in ADMINS:
+            return await query.answer("ADMINS Only!", show_alert=True)
+        buttons = [[InlineKeyboardButton('🏄 Back', callback_data='help')]]
+        await query.message.edit_text(script.ADMIN_COMMAND_TXT, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML)
 
     elif query.data == "stats":
         if query.from_user.id not in ADMINS:
@@ -284,7 +298,6 @@ async def cb_handler(client: Client, query: CallbackQuery):
         buttons = [[InlineKeyboardButton('🏄 Back', callback_data='start')]]
         await query.message.edit_text(script.STATUS_TXT.format(users, prm, chats, "N/A", files, "N/A", "-", "-", uptime), reply_markup=InlineKeyboardMarkup(buttons))
 
-    # Settings handlers
     elif query.data.startswith("bool_setgs"):
         ident, set_type, status, grp_id = query.data.split("#")
         userid = query.from_user.id
