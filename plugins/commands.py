@@ -1,5 +1,4 @@
 import os
-import sys
 import random
 import asyncio
 import logging
@@ -49,13 +48,6 @@ async def get_grp_stg(group_id):
     ]]
     return btn
 
-async def del_stk(s):
-    await asyncio.sleep(3)
-    try:
-        await s.delete()
-    except Exception:
-        pass
-
 # --- START & BASIC COMMANDS ---
 
 @Client.on_message(filters.command("start") & filters.incoming)
@@ -76,13 +68,13 @@ async def start(client, message):
         await message.reply(text=f"<b>ʜᴇʏ {user}, <i>{wish}</i>\nʜᴏᴡ ᴄᴀɴ ɪ ʜᴇʟᴘ ʏᴏᴜ??</b>", reply_markup=InlineKeyboardMarkup(btn))
         return 
         
+    # --- EMOJI REACTION ADDED BACK ---
     try:
         await message.react(emoji=random.choice(REACTIONS), big=True)
     except:
-        await message.react(emoji="⚡️", big=True)
-
-    d = await client.send_sticker(message.chat.id, random.choice(STICKERS))
-    asyncio.create_task(del_stk(d))
+        pass
+    
+    # Sticker Code Removed
 
     if not await db.is_user_exist(message.from_user.id):
         await db.add_user(message.from_user.id, message.from_user.first_name)
@@ -533,7 +525,7 @@ async def on_pm_search(bot, message):
     await db.update_bot_sttgs('PM_SEARCH', True)
     await message.reply('Successfully turned on pm search for all users')
 
-# --- ADMIN MANAGEMENT COMMANDS (Added) ---
+# --- ADMIN MANAGEMENT COMMANDS ---
 
 @Client.on_message(filters.command('restart') & filters.user(ADMINS))
 async def restart_bot(bot, message):
