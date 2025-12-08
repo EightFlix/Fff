@@ -2,9 +2,7 @@ class script(object):
 
     START_TXT = """<b>ʜᴇʏ {}, <i>{}</i></b><br>    <br><b>Premium Filter With PM Search ⚡</b>"""
 
-    # MY_ABOUT_TXT और MY_OWNER_TXT को यहाँ से हटा दिया गया है
-
-    # Updated Status Text for Storage & Uptime
+    # Stats Format (Storage & Uptime included)
     STATUS_TXT = """<b>📊 Bot Status</b>
     
 👤 <b>Users:</b> <code>{}</code>
@@ -19,29 +17,54 @@ class script(object):
 🚀 <b>Uptime:</b> <code>{}</code>"""
 
     NEW_GROUP_TXT = """#NewGroup<br>Title - {}<br>ID - <code>{}</code><br>Username - {}<br>Total - <code>{}</code>"""
-
     NEW_USER_TXT = """#NewUser<br>★ Name: {}<br>★ ID: <code>{}</code>"""
-
     NOT_FILE_TXT = """👋 Hello {},<br><br>I can't find the <b>{}</b> in my database! 🥲"""
     
+    # IMDb Template (Not used now but kept for safety)
     IMDB_TEMPLATE = """✅ I Found: <code>{query}</code><br><br>🏷 Title: <a href={url}>{title}</a>"""
-
     FILE_CAPTION = """<b>📂 {file_name}</b><br><b>♻️ Size: {file_size}</b><br><b>⚡ Powered By:- @YourXCloud</b>"""
-
     WELCOME_TEXT = """👋 Hello {mention}, Welcome to {title} group! 💞"""
 
-    HELP_TXT = """👋 Hello {},<br>    <br>I can filter movie and series you want."""
+    HELP_TXT = """👋 Hello {},<br>    <br>I can filter movies and series you want.<br>Just type the name in PM or Group.<br><br><b>Click buttons below for command list.</b>"""
 
-    ADMIN_COMMAND_TXT = """<b>Here is bot admin commands 👇<br><br>
-/index_channels - Index channel
-/stats - Bot Status
-/broadcast - Broadcast message
-/add_prm - Add Premium
-/rm_prm - Remove Premium
-/prm_list - List Premium Users</b>"""
-    
-    PLAN_TXT = """Activate premium plan to get exclusive features.<br><br>- INR {} for pre day -"""
+    # Full Admin Command List
+    ADMIN_COMMAND_TXT = """<b>👮‍♂️ Admin Commands:</b>
 
-    USER_COMMAND_TXT = """<b>User Commands: /start, /myplan, /plan</b>"""
+• /index_channels - Index channel
+• /stats - Check Bot Status
+• /broadcast - Broadcast Message to Users
+• /grp_broadcast - Broadcast Message to Groups
+• /users - List all users
+• /chats - List all groups
+• /leave - Leave a group
+• /restart - Restart the bot
+• /delete - Delete specific file
+• /delete_all - Delete ALL files
+• /ban_user - Ban a user
+• /unban_user - Unban a user
+
+<b>💎 Premium Commands:</b>
+• /add_prm - Add Premium
+• /rm_prm - Remove Premium
+• /prm_list - List Premium Users
+
+<b>⚙️ Settings Commands:</b>
+• /set_fsub - Set Force Subscribe
+• /on_auto_filter - Enable Auto Filter
+• /off_auto_filter - Disable Auto Filter
+• /on_pm_search - Enable PM Search
+• /off_pm_search - Disable PM Search"""
     
-    SOURCE_TXT = """<b>Private Bot.</b>"""
+    PLAN_TXT = """<b>💎 Premium Plans</b>\n\nActivate premium to get exclusive features like:\n• Ad-free experience\n• Direct Links\n• Fast Download\n\n<b>💰 Price:</b> INR {} per day\n\n<b>UPI ID:</b> <code>{}</code>"""
+
+    USER_COMMAND_TXT = """<b>👤 User Commands:</b>
+
+• /start - Check bot alive
+• /myplan - Check your premium status
+• /plan - Activate new plan
+• /id - Get Telegram ID
+• /img_2_link - Convert Image to Link
+• /settings - Change Group Settings (Admins only)"""
+    
+    # Source Text (Clean)
+    SOURCE_TXT = """<b>This is a private bot created for our community.</b>"""
