@@ -4,13 +4,8 @@ motor
 aiohttp
 aiofiles
 dnspython
-cinemagoer
-shortzy
 speedtest-cli
-apscheduler
 pytz
 requests
 qrcode
 Pillow
-beautifulsoup4
-lxml
