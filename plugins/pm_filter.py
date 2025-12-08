@@ -4,7 +4,6 @@ import math
 import logging
 import qrcode
 import os
-from time import time as time_now
 from hydrogram.errors import ListenerTimeout, MessageNotModified
 from datetime import datetime
 from info import (
@@ -22,6 +21,7 @@ from database.users_chats_db import db
 from database.ia_filterdb import get_search_results, delete_files, db_count_documents
 from plugins.commands import get_grp_stg
 from Script import script
+from time import time as time_now
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ async def group_search(client, message):
             files, offset, total = await get_search_results(message.text)
             if files:
                 btn = [[InlineKeyboardButton("Here", url=FILMS_LINK)]]
-                await message.reply_text(f'Total {total} results found', reply_markup=InlineKeyboardMarkup(btn))
+                await message.reply_text(f'Total {total} results found in this group', reply_markup=InlineKeyboardMarkup(btn))
             return
             
         if message.text.startswith("/"): return
@@ -113,18 +113,20 @@ async def next_page(bot, query):
     settings = await get_settings(query.message.chat.id)
     del_msg = f"\n\n<b>⚠️ Auto Delete in <code>{get_readable_time(DELETE_TIME)}</code></b>" if settings["auto_delete"] else ''
     
-    # Link Mode Generation
+    # --- LINK MODE GENERATION ---
     files_link = ''
     for index, file in enumerate(files, start=offset+1):
         files_link += f"""\n\n<b>{index}. <a href=https://t.me/{temp.U_NAME}?start=file_{query.message.chat.id}_{file['_id']}>[{get_size(file['file_size'])}] {file['file_name']}</a></b>"""
 
     btn = []
     
+    # Send All & Quality Buttons
     btn.insert(0, [
         InlineKeyboardButton("♻️ sᴇɴᴅ ᴀʟʟ", url=f"https://t.me/{temp.U_NAME}?start=all_{query.message.chat.id}_{key}"),
         InlineKeyboardButton("⚙️ ǫᴜᴀʟɪᴛʏ", callback_data=f"quality#{key}#{req}#{offset}")
     ])
 
+    # Pagination
     if 0 < offset <= MAX_BTN:
         off_set = 0
     elif offset == 0:
@@ -143,6 +145,7 @@ async def next_page(bot, query):
         
     btn.append(nav_btns)
 
+    # Caption में Search Result + Files Links + Delete Msg होगा
     cap = f"<b>✅ Results for:</b> <i>{search}</i>\n<b>📂 Total:</b> {total}\n{files_link}"
     
     try:
@@ -165,16 +168,20 @@ async def auto_filter(client, msg, s, spoll=False):
     temp.FILES[key] = files
     BUTTONS[key] = search
     
+    # --- LINK MODE GENERATION ---
     files_link = ''
     for index, file in enumerate(files, start=1):
         files_link += f"""\n\n<b>{index}. <a href=https://t.me/{temp.U_NAME}?start=file_{message.chat.id}_{file['_id']}>[{get_size(file['file_size'])}] {file['file_name']}</a></b>"""
     
     btn = []
+    
+    # Send All & Quality Buttons
     btn.insert(0, [
         InlineKeyboardButton("♻️ sᴇɴᴅ ᴀʟʟ", url=f"https://t.me/{temp.U_NAME}?start=all_{message.chat.id}_{key}"),
         InlineKeyboardButton("⚙️ ǫᴜᴀʟɪᴛʏ", callback_data=f"quality#{key}#{req}#0")
     ])
 
+    # Pagination
     if offset != "":
         btn.append([
             InlineKeyboardButton(f"🗓 1/{math.ceil(int(total_results) / MAX_BTN)}", callback_data="buttons"),
@@ -182,6 +189,8 @@ async def auto_filter(client, msg, s, spoll=False):
         ])
 
     del_msg = f"\n\n<b>⚠️ Auto Delete in <code>{get_readable_time(DELETE_TIME)}</code></b>" if settings["auto_delete"] else ''
+    
+    # Caption में Search Result + Files Links + Delete Msg
     cap = f"<b>✅ Results for:</b> <i>{search}</i>\n<b>📂 Total:</b> {total_results}\n{files_link}"
 
     await s.edit_text(cap + del_msg, reply_markup=InlineKeyboardMarkup(btn), parse_mode=enums.ParseMode.HTML)
@@ -338,3 +347,15 @@ async def cb_handler(client: Client, query: CallbackQuery):
             return
         await query.answer(url=f"https://t.me/{temp.U_NAME}?start={mc}")
         await query.message.delete()
+    
+    # --- DELETE ALL HANDLER (Added Back) ---
+    elif query.data == "delete_all":
+        await query.message.edit("Deleting all files... This may take a while.")
+        total = await delete_files("") 
+        await query.message.edit(f"Deleted {total} files from database.")
+
+    elif query.data.startswith("delete_"):
+        _, query_ = query.data.split("_", 1)
+        await query.message.edit(f"Deleting files matching: {query_}...")
+        total = await delete_files(query_)
+        await query.message.edit(f"Deleted {total} files matching '{query_}'")
