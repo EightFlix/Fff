@@ -1,4 +1,5 @@
 import os
+import sys
 import random
 import asyncio
 import logging
@@ -7,26 +8,30 @@ from time import time as time_now
 from time import monotonic
 
 from hydrogram import Client, filters, enums
-from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
+from hydrogram.errors import MessageTooLong
 
 from Script import script
-from database.ia_filterdb import db_count_documents, second_db_count_documents
+from database.ia_filterdb import db_count_documents, second_db_count_documents, get_file_details
 from database.users_chats_db import db
 from info import (
     IS_PREMIUM, PRE_DAY_AMOUNT, RECEIPT_SEND_USERNAME, URL, BIN_CHANNEL, 
-    STICKERS, INDEX_CHANNELS, ADMINS, DELETE_TIME, 
-    SUPPORT_LINK, UPDATES_LINK, LOG_CHANNEL, PICS, IS_STREAM, REACTIONS
+    STICKERS, INDEX_CHANNELS, ADMINS, IS_VERIFY, 
+    VERIFY_TUTORIAL, VERIFY_EXPIRE, SHORTLINK_API, SHORTLINK_URL, DELETE_TIME, 
+    SUPPORT_LINK, UPDATES_LINK, LOG_CHANNEL, PICS, IS_STREAM, REACTIONS, PM_FILE_DELETE_TIME
 )
 from utils import (
     is_premium, upload_image, get_settings, get_size, is_subscribed, 
-    is_check_admin, update_verify_status, get_readable_time, get_wish, temp
+    is_check_admin, get_shortlink, get_verify_status, update_verify_status, 
+    get_readable_time, get_wish, temp
 )
 
 logger = logging.getLogger(__name__)
 
+# --- HELPER FUNCTIONS ---
+
 async def get_grp_stg(group_id):
     settings = await get_settings(group_id)
-    # IMDb और Shortlink सेटिंग्स हटा दी गई हैं
     btn = [[
         InlineKeyboardButton('Edit File Caption', callback_data=f'caption_setgs#{group_id}')
     ],[
@@ -50,6 +55,8 @@ async def del_stk(s):
         await s.delete()
     except Exception:
         pass
+
+# --- START & BASIC COMMANDS ---
 
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
@@ -161,13 +168,19 @@ async def start(client, message):
             )
             file_ids.append(msg.id)
 
-        time = get_readable_time(23600) # Fixed time or from env
+        time = get_readable_time(PM_FILE_DELETE_TIME)
         vp = await message.reply(f"Nᴏᴛᴇ: Tʜɪs ғɪʟᴇs ᴡɪʟʟ ʙᴇ ᴅᴇʟᴇᴛᴇ ɪɴ {time} ᴛᴏ ᴀᴠᴏɪᴅ ᴄᴏᴘʏʀɪɢʜᴛs. Sᴀᴠᴇ ᴛʜᴇ ғɪʟᴇs ᴛᴏ sᴏᴍᴇᴡʜᴇʀᴇ ᴇʟsᴇ")
         file_ids.append(vp.id)
         
-        # Note: Auto delete loop removed for simplicity in this snippet, can be added if needed
-        # Just creating the button to retrieve again
+        await asyncio.sleep(PM_FILE_DELETE_TIME)
         buttons = [[InlineKeyboardButton('ɢᴇᴛ ғɪʟᴇs ᴀɢᴀɪɴ', callback_data=f"get_del_send_all_files#{grp_id}#{key}")]] 
+        
+        for i in range(0, len(file_ids), 100):
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=file_ids[i:i+100])
+            except:
+                pass
+            
         await message.reply("Tʜᴇ ғɪʟᴇ ʜᴀs ʙᴇᴇɴ ɢᴏɴᴇ ! Cʟɪᴄᴋ ɢɪᴠᴇɴ ʙᴜᴛᴛᴏɴ ᴛᴏ ɢᴇᴛ ɪᴛ ᴀɢᴀɪɴ.", reply_markup=InlineKeyboardMarkup(buttons))
         return
 
@@ -176,14 +189,6 @@ async def start(client, message):
         type_, grp_id, file_id = mc.split("_", 2)
     except ValueError:
         return await message.reply("Invalid Command")
-    
-    # Check for direct file access
-    if type_ == 'file':
-        # Direct file access logic can go here if needed, but usually handled via callback
-        pass
-
-    # Fallback to general file retrieval logic
-    # Note: Logic simplified as Shortlink verification removed
     
     from database.ia_filterdb import get_file_details
     files_ = await get_file_details(file_id)
@@ -265,14 +270,14 @@ async def stats(bot, message):
     users = await db.total_users_count()
     chats = await db.total_chat_count()
     prm = await db.get_premium_count()
-    used_files_db_size = get_size(await db.get_files_db_size())
-    used_data_db_size = get_size(await db.get_data_db_size())
-
-    secnd_files_db_used_size = '-'
-    secnd_files = '-'
+    
+    # Storage Info
+    used_bytes, free_bytes = await db.get_db_size()
+    used = get_size(used_bytes)
+    free = get_size(free_bytes)
 
     uptime = get_readable_time(time_now() - temp.START_TIME)
-    await message.reply_text(script.STATUS_TXT.format(users, prm, chats, used_data_db_size, files, used_files_db_size, secnd_files, secnd_files_db_used_size, uptime))    
+    await message.reply_text(script.STATUS_TXT.format(users, prm, chats, files, used, free, uptime))    
 
 @Client.on_message(filters.command('settings'))
 async def settings(client, message):
@@ -337,6 +342,7 @@ async def delete_file(bot, message):
     ]]
     await message.reply_text(f"Do you want to delete all: {query} ?", reply_markup=InlineKeyboardMarkup(btn))
 
+# --- IMG 2 LINK COMMAND ---
 @Client.on_message(filters.command('img_2_link'))
 async def img_2_link(bot, message):
     reply_to_message = message.reply_to_message
@@ -364,6 +370,8 @@ async def ping(client, message):
     msg = await message.reply("👀")
     end_time = monotonic()
     await msg.edit(f'{round((end_time - start_time) * 1000)} ms')
+
+# --- PREMIUM COMMANDS ---
 
 @Client.on_message(filters.command('plan') & filters.private)
 async def plan(client, message):
@@ -524,3 +532,128 @@ async def off_pm_search(bot, message):
 async def on_pm_search(bot, message):
     await db.update_bot_sttgs('PM_SEARCH', True)
     await message.reply('Successfully turned on pm search for all users')
+
+# --- ADMIN MANAGEMENT COMMANDS (Added) ---
+
+@Client.on_message(filters.command('restart') & filters.user(ADMINS))
+async def restart_bot(bot, message):
+    msg = await message.reply("Restarting...")
+    with open('restart.txt', 'w+') as file:
+        file.write(f"{msg.chat.id}\n{msg.id}")
+    os.execl(sys.executable, sys.executable, "bot.py")
+
+@Client.on_message(filters.command('leave') & filters.user(ADMINS))
+async def leave_a_chat(bot, message):
+    if len(message.command) == 1:
+        return await message.reply('Give me a chat ID')
+    try:
+        chat = int(message.command[1])
+    except:
+        return await message.reply('Give me a valid chat ID')
+    try:
+        await bot.send_message(chat_id=chat, text='My owner has told me to leave from group. Bye!')
+        await bot.leave_chat(chat)
+        await message.reply(f"Successfully left group: `{chat}`")
+    except Exception as e:
+        await message.reply(f'Error: {e}')
+
+@Client.on_message(filters.command('users') & filters.user(ADMINS))
+async def list_users(bot, message):
+    raju = await message.reply('Getting list of users...')
+    users = await db.get_all_users()
+    out = "Users saved in database:\n\n"
+    count = 0
+    async for user in users:
+        out += f"Name: {user['name']} | ID: `{user['id']}`\n"
+        count += 1
+        if count >= 100: # Limit output to avoid huge messages
+            out += "...\nAnd many more."
+            break
+    try:
+        await raju.edit_text(out)
+    except MessageTooLong:
+        with open('users.txt', 'w+') as outfile:
+            outfile.write(out)
+        await message.reply_document('users.txt', caption="List of users")
+        os.remove('users.txt')
+
+@Client.on_message(filters.command('chats') & filters.user(ADMINS))
+async def list_chats(bot, message):
+    raju = await message.reply('Getting list of chats...')
+    chats = await db.get_all_chats()
+    out = "Chats saved in database:\n\n"
+    count = 0
+    async for chat in chats:
+        out += f"Title: {chat['title']} | ID: `{chat['id']}`\n"
+        count += 1
+        if count >= 100:
+            out += "...\nAnd many more."
+            break
+    try:
+        await raju.edit_text(out)
+    except MessageTooLong:
+        with open('chats.txt', 'w+') as outfile:
+            outfile.write(out)
+        await message.reply_document('chats.txt', caption="List of chats")
+        os.remove('chats.txt')
+
+@Client.on_message(filters.command('ban_user') & filters.user(ADMINS))
+async def ban_a_user(bot, message):
+    if len(message.command) < 2:
+        return await message.reply('Give me a user ID')
+    try:
+        user_id = int(message.command[1])
+        await db.ban_user(user_id)
+        # temp.BANNED_USERS.append(user_id) # Optional: Update runtime cache
+        await message.reply(f"User {user_id} banned successfully.")
+    except Exception as e:
+        await message.reply(f"Error: {e}")
+
+@Client.on_message(filters.command('unban_user') & filters.user(ADMINS))
+async def unban_a_user(bot, message):
+    if len(message.command) < 2:
+        return await message.reply('Give me a user ID')
+    try:
+        user_id = int(message.command[1])
+        await db.remove_ban(user_id)
+        await message.reply(f"User {user_id} unbanned successfully.")
+    except Exception as e:
+        await message.reply(f"Error: {e}")
+
+# --- GROUP ADMIN COMMANDS ---
+
+@Client.on_message(filters.command('ban') & filters.group)
+async def ban_chat_user(client, message):
+    if not await is_check_admin(client, message.chat.id, message.from_user.id):
+        return await message.reply_text('You not admin in this group.')
+    if not message.reply_to_message:
+        return await message.reply("Reply to a user to ban.")
+    try:
+        await client.ban_chat_member(message.chat.id, message.reply_to_message.from_user.id)
+        await message.reply(f"Banned {message.reply_to_message.from_user.mention}")
+    except Exception as e:
+        await message.reply(f"Error: {e}")
+
+@Client.on_message(filters.command('mute') & filters.group)
+async def mute_chat_user(client, message):
+    if not await is_check_admin(client, message.chat.id, message.from_user.id):
+        return await message.reply_text('You not admin in this group.')
+    if not message.reply_to_message:
+        return await message.reply("Reply to a user to mute.")
+    try:
+        await client.restrict_chat_member(message.chat.id, message.reply_to_message.from_user.id, ChatPermissions())
+        await message.reply(f"Muted {message.reply_to_message.from_user.mention}")
+    except Exception as e:
+        await message.reply(f"Error: {e}")
+
+@Client.on_message(filters.command(['unban', 'unmute']) & filters.group)
+async def unban_chat_user(client, message):
+    if not await is_check_admin(client, message.chat.id, message.from_user.id):
+        return await message.reply_text('You not admin in this group.')
+    if not message.reply_to_message:
+        return await message.reply("Reply to a user.")
+    try:
+        await client.unban_chat_member(message.chat.id, message.reply_to_message.from_user.id)
+        await message.reply(f"Unbanned/Unmuted {message.reply_to_message.from_user.mention}")
+    except Exception as e:
+        await message.reply(f"Error: {e}")
