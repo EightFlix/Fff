@@ -11,7 +11,7 @@ from hydrogram import Client, filters, enums
 from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from Script import script
-from database.ia_filterdb import db_count_documents, second_db_count_documents, get_file_details, delete_files
+from database.ia_filterdb import db_count_documents, second_db_count_documents, get_file_details
 from database.users_chats_db import db
 from info import (
     IS_PREMIUM, PRE_DAY_AMOUNT, RECEIPT_SEND_USERNAME, URL, BIN_CHANNEL, 
@@ -19,7 +19,7 @@ from info import (
     VERIFY_TUTORIAL, VERIFY_EXPIRE, SHORTLINK_API, SHORTLINK_URL, DELETE_TIME, 
     SUPPORT_LINK, UPDATES_LINK, LOG_CHANNEL, PICS, IS_STREAM, REACTIONS, PM_FILE_DELETE_TIME
 )
-# temp को यहाँ ऊपर सही से इम्पोर्ट किया गया है
+# 'temp' को यहाँ सबसे ऊपर इम्पोर्ट किया गया है ताकि UnboundLocalError न आए
 from utils import (
     is_premium, upload_image, get_settings, get_size, is_subscribed, 
     is_check_admin, get_shortlink, get_verify_status, update_verify_status, 
@@ -101,6 +101,7 @@ async def start(client, message):
             InlineKeyboardButton('👨‍🚒 Help', callback_data='help'),
             InlineKeyboardButton('📚 Status 📊', callback_data='stats')
         ],[
+            # Fix: Using temp.U_NAME instead of client.username
             InlineKeyboardButton('🤑 Buy Subscription : Remove Ads', url=f"https://t.me/{temp.U_NAME}?start=premium")
         ]]
         reply_markup = InlineKeyboardMarkup(buttons)
@@ -175,7 +176,7 @@ async def start(client, message):
         except ValueError:
             return await message.reply("Invalid link format")
             
-        # FIX: यहां से 'from utils import temp' हटा दिया गया है
+        # 'temp' is already imported at top, so no local import needed here
         files = temp.FILES.get(key)
         if not files:
             return await message.reply('No Such All Files Exist! (Link expired or bot restarted)')
@@ -216,7 +217,8 @@ async def start(client, message):
         for i in range(0, len(file_ids), 100):
             try:
                 await client.delete_messages(chat_id=message.chat.id, message_ids=file_ids[i:i+100])
-            except: pass
+            except:
+                pass
             
         await message.reply("Tʜᴇ ғɪʟᴇ ʜᴀs ʙᴇᴇɴ ɢᴏɴᴇ ! Cʟɪᴄᴋ ɢɪᴠᴇɴ ʙᴜᴛᴛᴏɴ ᴛᴏ ɢᴇᴛ ɪᴛ ᴀɢᴀɪɴ.", reply_markup=InlineKeyboardMarkup(buttons))
         return
@@ -270,7 +272,8 @@ async def start(client, message):
     try:
         await msg.delete()
         await vp.delete()
-    except: pass
+    except:
+        pass
     
     await message.reply("Tʜᴇ ғɪʟᴇ ʜᴀs ʙᴇᴇɴ ɢᴏɴᴇ ! Cʟɪᴄᴋ ɢɪᴠᴇɴ ʙᴜᴛᴛᴏɴ ᴛᴏ ɢᴇᴛ ɪᴛ ᴀɢᴀɪɴ.", reply_markup=InlineKeyboardMarkup(btns))
 
@@ -410,7 +413,8 @@ async def img_2_link(bot, message):
     response = upload_image(path)
     try:
         os.remove(path)
-    except: pass
+    except:
+        pass
     
     if not response:
          await text.edit_text(text="Upload failed!")
@@ -447,4 +451,117 @@ async def add_prm(bot, message):
         return await message.reply('Not valid days, use: 1d, 7d, 30d, 365d, etc...')
     try:
         user = await bot.get_users(user_id)
-    ex
+    except Exception as e:
+        return await message.reply(f'Error: {e}')
+    if user.id in ADMINS:
+        return await message.reply('ADMINS is already premium')
+    if not await is_premium(user.id, bot):
+        mp = await db.get_plan(user.id)
+        ex = datetime.now(timezone.utc) + timedelta(days=d)
+        mp['expire'] = ex
+        mp['plan'] = f'{d} days'
+        mp['premium'] = True
+        await db.update_plan(user.id, mp)
+        await message.reply(f"Given premium to {user.mention}\nExpire: {ex.strftime('%Y.%m.%d %H:%M:%S')}")
+        try:
+            await bot.send_message(user.id, f"Your now premium user\nExpire: {ex.strftime('%Y.%m.%d %H:%M:%S')}")
+        except:
+            pass
+    else:
+        await message.reply(f"{user.mention} is already premium user")
+
+@Client.on_message(filters.command('rm_prm') & filters.user(ADMINS))
+async def rm_prm(bot, message):
+    if not IS_PREMIUM:
+        return await message.reply('Premium feature was disabled')
+    try:
+        _, user_id = message.text.split(' ')
+    except:
+        return await message.reply('Usage: /rm_prm user_id')
+    try:
+        user = await bot.get_users(user_id)
+    except Exception as e:
+        return await message.reply(f'Error: {e}')
+    if user.id in ADMINS:
+        return await message.reply('ADMINS is already premium')
+    if not await is_premium(user.id, bot):
+        await message.reply(f"{user.mention} is not premium user")
+    else:
+        mp = await db.get_plan(user.id)
+        mp['expire'] = ''
+        mp['plan'] = ''
+        mp['premium'] = False
+        await db.update_plan(user.id, mp)
+        await message.reply(f"{user.mention} is no longer premium user")
+        try:
+            await bot.send_message(user.id, "Your premium plan was removed by admin")
+        except:
+            pass
+
+@Client.on_message(filters.command('prm_list') & filters.user(ADMINS))
+async def prm_list(bot, message):
+    if not IS_PREMIUM:
+        return await message.reply('Premium feature was disabled')
+    tx = await message.reply('Getting list of premium users')
+    pr = []
+    async for i in await db.get_premium_users():
+        if i['status']['premium']:
+            pr.append(i['id'])
+            
+    t = 'premium users saved in database are:\n\n'
+    for p in pr:
+        try:
+            u = await bot.get_users(p)
+            t += f"{u.mention} : {p}\n"
+        except:
+            t += f"{p}\n"
+    await tx.edit_text(t)
+
+@Client.on_message(filters.command('set_fsub') & filters.user(ADMINS))
+async def set_fsub(bot, message):
+    try:
+        _, ids = message.text.split(' ', 1)
+    except ValueError:
+        return await message.reply('usage: /set_fsub -100xxx -100xxx')
+    title = ""
+    for id in ids.split(' '):
+        try:
+            chat = await bot.get_chat(int(id))
+            title += f'{chat.title}\n'
+        except Exception as e:
+            return await message.reply(f'ERROR: {e}')
+    await db.update_bot_sttgs('FORCE_SUB_CHANNELS', ids)
+    await message.reply(f'added force subscribe channels: {title}')
+
+@Client.on_message(filters.command('set_req_fsub') & filters.user(ADMINS))
+async def set_req_fsub(bot, message):
+    try:
+        _, id = message.text.split(' ', 1)
+    except ValueError:
+        return await message.reply('usage: /set_req_fsub -100xxx')
+    try:
+        chat = await bot.get_chat(int(id))
+    except Exception as e:
+        return await message.reply(f'ERROR: {e}')
+    await db.update_bot_sttgs('REQUEST_FORCE_SUB_CHANNELS', id)
+    await message.reply(f'added request force subscribe channel: {chat.title}')
+
+@Client.on_message(filters.command('off_auto_filter') & filters.user(ADMINS))
+async def off_auto_filter(bot, message):
+    await db.update_bot_sttgs('AUTO_FILTER', False)
+    await message.reply('Successfully turned off auto filter for all groups')
+
+@Client.on_message(filters.command('on_auto_filter') & filters.user(ADMINS))
+async def on_auto_filter(bot, message):
+    await db.update_bot_sttgs('AUTO_FILTER', True)
+    await message.reply('Successfully turned on auto filter for all groups')
+
+@Client.on_message(filters.command('off_pm_search') & filters.user(ADMINS))
+async def off_pm_search(bot, message):
+    await db.update_bot_sttgs('PM_SEARCH', False)
+    await message.reply('Successfully turned off pm search for all users')
+
+@Client.on_message(filters.command('on_pm_search') & filters.user(ADMINS))
+async def on_pm_search(bot, message):
+    await db.update_bot_sttgs('PM_SEARCH', True)
+    await message.reply('Successfully turned on pm search for all users')
