@@ -6,11 +6,13 @@ from hydrogram.file_id import FileId
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import TEXT
 from pymongo.errors import DuplicateKeyError
-from info import FILES_DATABASE_URL, DATABASE_NAME, COLLECTION_NAME, MAX_BTN
+# IMPORTANT: Importing DATA_DATABASE_URL, not FILES_DATABASE_URL
+from info import DATA_DATABASE_URL, DATABASE_NAME, COLLECTION_NAME, MAX_BTN
 
 logger = logging.getLogger(__name__)
 
-client = AsyncIOMotorClient(FILES_DATABASE_URL)
+# Using the SAME database URL as the main data
+client = AsyncIOMotorClient(DATA_DATABASE_URL)
 db = client[DATABASE_NAME]
 collection = db[COLLECTION_NAME]
 
@@ -96,7 +98,7 @@ def unpack_new_file_id(new_file_id):
 async def db_count_documents():
      return await collection.count_documents({})
 
-# Second DB function removed or kept dummy to avoid import errors in other files
+# Keep dummy function for compatibility with commands.py
 async def second_db_count_documents():
      return 0
 
