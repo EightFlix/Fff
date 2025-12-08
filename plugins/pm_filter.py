@@ -4,15 +4,17 @@ import math
 import logging
 import qrcode
 import os
-from pyrogram.errors import ListenerTimeout
+# FIX: pyrogram -> hydrogram
+from hydrogram.errors import ListenerTimeout
 from datetime import datetime
 from info import (
     IS_PREMIUM, PRE_DAY_AMOUNT, RECEIPT_SEND_USERNAME, UPI_ID, UPI_NAME,
     ADMINS, MAX_BTN, BIN_CHANNEL, IS_STREAM, DELETE_TIME, 
     FILMS_LINK, LOG_CHANNEL, SUPPORT_GROUP, UPDATES_LINK
 )
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto
-from pyrogram import Client, filters, enums
+# FIX: pyrogram -> hydrogram
+from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto
+from hydrogram import Client, filters, enums
 from utils import (
     is_premium, get_size, is_subscribed, is_check_admin, get_wish, 
     get_readable_time, temp, get_settings, save_group_settings
@@ -33,7 +35,6 @@ async def pm_search(client, message):
         return
         
     # --- STRICT PREMIUM CHECK ---
-    # अगर यूजर प्रीमियम नहीं है, तो कुछ मत करो
     if not await is_premium(message.from_user.id, client):
         return
 
@@ -188,6 +189,8 @@ async def auto_filter(client, msg, s, spoll=False):
 
     await s.edit_text(cap + del_msg, reply_markup=InlineKeyboardMarkup(btn), parse_mode=enums.ParseMode.HTML)
 
+# --- CALLBACK HANDLERS ---
+
 @Client.on_callback_query()
 async def cb_handler(client: Client, query: CallbackQuery):
     if query.data == "close_data":
@@ -206,9 +209,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
     elif query.data.startswith("stream"):
         file_id = query.data.split('#', 1)[1]
         msg = await client.send_cached_media(chat_id=BIN_CHANNEL, file_id=file_id)
-        # Use URL from info.py correctly
-        from info import URL as SITE_URL
-        base_url = SITE_URL[:-1] if SITE_URL.endswith('/') else SITE_URL
+        base_url = URL[:-1] if URL.endswith('/') else URL
         watch = f"{base_url}/watch/{msg.id}"
         download = f"{base_url}/download/{msg.id}"
         btn=[[
@@ -283,6 +284,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         buttons = [[InlineKeyboardButton('🏄 Back', callback_data='start')]]
         await query.message.edit_text(script.STATUS_TXT.format(users, prm, chats, "N/A", files, "N/A", "-", "-", uptime), reply_markup=InlineKeyboardMarkup(buttons))
 
+    # Settings handlers
     elif query.data.startswith("bool_setgs"):
         ident, set_type, status, grp_id = query.data.split("#")
         userid = query.from_user.id
