@@ -146,7 +146,7 @@ PICS = environ.get('PICS', 'https://i.postimg.cc/8C15CQ5y/1.png https://i.postim
 TIME_ZONE = environ.get('TIME_ZONE', 'Asia/Kolkata')
 DELETE_TIME = int(environ.get('DELETE_TIME', 3600))
 CACHE_TIME = int(environ.get('CACHE_TIME', 300))
-MAX_BTN = int(environ.get('MAX_BTN', 8))
+MAX_BTN = int(environ.get('MAX_BTN', 10))
 VERIFY_EXPIRE = int(environ.get('VERIFY_EXPIRE', 86400))
 PM_FILE_DELETE_TIME = int(environ.get('PM_FILE_DELETE_TIME', '3600'))
 
