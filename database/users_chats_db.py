@@ -2,23 +2,20 @@ import datetime
 from motor.motor_asyncio import AsyncIOMotorClient
 from info import (
     DATABASE_NAME, DATA_DATABASE_URL, FILES_DATABASE_URL, 
-    SECOND_FILES_DATABASE_URL, PROTECT_CONTENT, IMDB, SPELL_CHECK, 
+    PROTECT_CONTENT, IMDB, SPELL_CHECK, 
     AUTO_DELETE, WELCOME, WELCOME_TEXT, IMDB_TEMPLATE, FILE_CAPTION, 
     SHORTLINK_URL, SHORTLINK_API, SHORTLINK, TUTORIAL, LINK_MODE, 
     VERIFY_EXPIRE, BOT_ID
 )
 
 # --- MongoDB Clients Setup ---
-# Motor Client का उपयोग (Async)
+# Main Data DB (Users, Chats, Settings)
 data_db_client = AsyncIOMotorClient(DATA_DATABASE_URL)
 data_db = data_db_client[DATABASE_NAME]
 
+# Files DB (Indexed Files)
 files_db_client = AsyncIOMotorClient(FILES_DATABASE_URL)
 files_db = files_db_client[DATABASE_NAME]
-
-if SECOND_FILES_DATABASE_URL:
-    second_files_db_client = AsyncIOMotorClient(SECOND_FILES_DATABASE_URL)
-    second_files_db = second_files_db_client[DATABASE_NAME]
 
 class Database:
     default_setgs = {
@@ -82,6 +79,24 @@ class Database:
             settings=self.default_setgs
         )
     
+    # --- STORAGE STATS FUNCTION (NEW) ---
+    async def get_db_size(self):
+        try:
+            # Get stats for both databases
+            files_stats = await files_db.command("dbstats")
+            data_stats = await data_db.command("dbstats")
+            
+            # Calculate total used size in bytes
+            used = files_stats.get('dataSize', 0) + data_stats.get('dataSize', 0)
+            
+            # MongoDB Atlas Free Tier Limit is 512 MB (536,870,912 bytes)
+            limit = 536870912 
+            free = limit - used
+            
+            return used, free
+        except Exception:
+            return 0, 0
+
     async def add_user(self, id, name):
         user = self.new_user(id, name)
         await self.col.insert_one(user)
@@ -127,15 +142,6 @@ class Database:
     async def delete_chat(self, grp_id):
         await self.grp.delete_many({'id': int(grp_id)})
 
-    async def find_join_req(self, id):
-        return bool(await self.req.find_one({'id': id}))
-
-    async def add_join_req(self, id):
-        await self.req.insert_one({'id': id})
-
-    async def del_join_req(self):
-        await self.req.drop()
-
     async def get_banned(self):
         users = self.col.find({'ban_status.is_banned': True})
         chats = self.grp.find({'chat_status.is_disabled': True})
@@ -178,31 +184,16 @@ class Database:
         user = await self.col.find_one({'id':int(user_id)})
         if user:
             info = user.get('verify_status', self.default_verify)
-            # Check expiration
-            if info.get('expire_time') == 0:
-                 # If explicit 0, probably not verified or reset
-                 pass
             return info
         return self.default_verify
         
     async def update_verify_status(self, user_id, verify_token="", is_verified=False, link="", expire_time=0):
-        # Helper to update specific fields or replace the object
-        # Since the argument structure in utils might pass separate args, we handle it here:
-        
-        # First get current verify status
         current = await self.get_verify_status(user_id)
-        
-        # Update fields
         if verify_token: current['verify_token'] = verify_token
         if link: current['link'] = link
         if expire_time: current['expire_time'] = expire_time
-        # Boolean check is tricky if False is passed, so we assume keyword arguments
         current['is_verified'] = is_verified
-        
-        # If verify dict is passed directly (from some old logic), handle it
-        if isinstance(verify_token, dict):
-             current = verify_token
-
+        if isinstance(verify_token, dict): current = verify_token
         await self.col.update_one({'id': int(user_id)}, {'$set': {'verify_status': current}})
     
     async def total_chat_count(self):
@@ -214,9 +205,6 @@ class Database:
     
     async def get_files_db_size(self):
         return (await files_db.command("dbstats"))['dataSize']
-   
-    async def get_second_files_db_size(self):
-        return (await second_files_db.command("dbstats"))['dataSize']
     
     async def get_data_db_size(self):
         return (await data_db.command("dbstats"))['dataSize']
@@ -265,7 +253,4 @@ class Database:
     async def get_bot_sttgs(self):
         return await self.stg.find_one({'id': BOT_ID})
 
-# ---------------------------------------------------------
-# यह लाइन सबसे महत्वपूर्ण है, इसके बिना एरर आता रहेगा
-# ---------------------------------------------------------
 db = Database()
