@@ -163,8 +163,6 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip):
                     no_media += 1
                     continue
                 
-                # --- PDF SUPPORT CHECK HERE ---
-                # DOCUMENT = PDF, MKV, ZIP, APK etc.
                 elif message.media not in [enums.MessageMediaType.VIDEO, enums.MessageMediaType.DOCUMENT, enums.MessageMediaType.AUDIO]:
                     unsupported += 1
                     continue
@@ -173,10 +171,11 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip):
                 if not media:
                     unsupported += 1
                     continue
-                    
+                
+                # --- FIX: Set file_type and caption ---
+                media.file_type = message.media.value
                 media.caption = message.caption
                 
-                # Clean Filename
                 if getattr(media, 'file_name', None):
                     file_name = RE_FILE_NAME_CLEANER.sub(" ", str(media.file_name)).strip()
                     media.file_name = file_name
