@@ -6,12 +6,11 @@ from hydrogram.types import Message
 from utils import temp
 from hydrogram import Client, utils, raw
 from hydrogram.session import Session, Auth
-from hydrogram.errors import AuthBytesInvalid
+from hydrogram.errors import AuthBytesInvalid, TimeoutError, RPCError
 from hydrogram.file_id import FileId, FileType, ThumbnailSource
 
 logger = logging.getLogger(__name__)
 
-# सेशन निर्माण के लिए लॉक ताकि एक ही समय में कई बार ऑथराइजेशन न हो
 session_lock = asyncio.Lock()
 
 async def chunk_size(length):
@@ -35,7 +34,6 @@ class TGCustomYield:
     async def generate_media_session(self, client: Client, msg: Message):
         data = await self.generate_file_properties(msg)
 
-        # रेस कंडीशन से बचने के लिए लॉक का उपयोग करें
         async with session_lock:
             media_session = client.media_sessions.get(data.dc_id, None)
 
@@ -134,63 +132,64 @@ class TGCustomYield:
         current_part = 1
         location = await self.get_location(data)
 
-        try:
-            r = await media_session.send(
-                raw.functions.upload.GetFile(
-                    location=location,
-                    offset=offset,
-                    limit=chunk_size
-                ),
-            )
+        r = None
+        
+        # FIX: Retry logic for the initial request
+        for i in range(3):
+            try:
+                r = await media_session.send(
+                    raw.functions.upload.GetFile(
+                        location=location,
+                        offset=offset,
+                        limit=chunk_size
+                    ),
+                )
+                break
+            except (TimeoutError, RPCError):
+                await asyncio.sleep(0.5)
+                continue
+        
+        if r is None:
+            logger.error("Failed to fetch initial chunk after retries.")
+            return
 
-            if isinstance(r, raw.types.upload.File):
-                while current_part <= part_count:
-                    chunk = r.bytes
-                    if not chunk:
-                        break
-                    
-                    # Logic Fix: Slicing the chunk correctly
-                    to_yield = chunk
-                    
-                    # If it's the first part, cut the beginning
-                    if current_part == 1:
-                        to_yield = to_yield[first_part_cut:]
-                    
-                    # If it's the last part, cut the end (Critical Fix)
-                    if current_part == part_count:
-                        # Note: If it's both first AND last part (single chunk file), apply both cuts
-                        # Since we already sliced the start, we adjust the end slice relative to the new length is tricky.
-                        # Easier method: Apply end cut to the original chunk logic or adjust carefully.
-                        
-                        # Correct logic:
-                        # If current_part == 1, we sliced off `first_part_cut`.
-                        # The `last_part_cut` is relative to the *chunk start*.
-                        # So if we sliced the start, we need to return up to `last_part_cut - first_part_cut`? No.
-                        
-                        # Let's simplify:
-                        if part_count == 1:
-                            yield chunk[first_part_cut:last_part_cut]
+        if isinstance(r, raw.types.upload.File):
+            while current_part <= part_count:
+                chunk = r.bytes
+                if not chunk:
+                    break
+                
+                if current_part == 1:
+                    yield chunk[first_part_cut:]
+                elif current_part == part_count:
+                    yield chunk[:last_part_cut]
+                else:
+                    yield chunk
+
+                offset += chunk_size
+                current_part += 1
+
+                if current_part <= part_count:
+                    # FIX: Retry logic for subsequent chunks
+                    success = False
+                    for i in range(3):
+                        try:
+                            r = await media_session.send(
+                                raw.functions.upload.GetFile(
+                                    location=location,
+                                    offset=offset,
+                                    limit=chunk_size
+                                ),
+                            )
+                            success = True
                             break
-                        else:
-                            yield to_yield[:last_part_cut]
-                    else:
-                        yield to_yield
-
-                    offset += chunk_size
-                    current_part += 1
-
-                    # Fetch next chunk if needed
-                    if current_part <= part_count:
-                        r = await media_session.send(
-                            raw.functions.upload.GetFile(
-                                location=location,
-                                offset=offset,
-                                limit=chunk_size
-                            ),
-                        )
-        except Exception as e:
-            logger.error(f"Error yielding file: {e}")
-            raise e
+                        except (TimeoutError, RPCError):
+                            await asyncio.sleep(0.5)
+                            continue
+                    
+                    if not success:
+                        logger.error(f"Failed to fetch chunk {current_part} after retries. Stopping stream.")
+                        break
 
     async def download_as_bytesio(self, media_msg: Message):
         client = self.main_bot
@@ -204,13 +203,24 @@ class TGCustomYield:
         m_file = bytearray()
 
         while True:
-            r = await media_session.send(
-                raw.functions.upload.GetFile(
-                    location=location,
-                    offset=offset,
-                    limit=limit
-                )
-            )
+            # FIX: Retry logic for bytesio download
+            r = None
+            for i in range(3):
+                try:
+                    r = await media_session.send(
+                        raw.functions.upload.GetFile(
+                            location=location,
+                            offset=offset,
+                            limit=limit
+                        )
+                    )
+                    break
+                except (TimeoutError, RPCError):
+                    await asyncio.sleep(0.5)
+                    continue
+            
+            if r is None:
+                break
 
             if isinstance(r, raw.types.upload.File):
                 chunk = r.bytes
