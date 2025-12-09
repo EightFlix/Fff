@@ -68,6 +68,7 @@ async def start(client, message):
         await message.reply(text=f"<b>ʜᴇʏ {user}, <i>{wish}</i>\nʜᴏᴡ ᴄᴀɴ ɪ ʜᴇʟᴘ ʏᴏᴜ??</b>", reply_markup=InlineKeyboardMarkup(btn))
         return 
         
+    # --- EMOJI REACTION ONLY (Sticker Removed) ---
     try: await message.react(emoji=random.choice(REACTIONS), big=True)
     except: pass
 
@@ -79,6 +80,8 @@ async def start(client, message):
         buttons = [[
             InlineKeyboardButton('👨‍🚒 Help', callback_data='help'),
             InlineKeyboardButton('📚 Status 📊', callback_data='stats')
+        ],[
+            InlineKeyboardButton('🤑 Buy Subscription : Remove Ads', url=f"https://t.me/{temp.U_NAME}?start=premium")
         ]]
         reply_markup = InlineKeyboardMarkup(buttons)
         await message.reply_photo(
@@ -151,9 +154,8 @@ async def start(client, message):
         for i in range(0, len(file_ids), 100):
             try: await client.delete_messages(chat_id=message.chat.id, message_ids=file_ids[i:i+100])
             except: pass
-            
-        gone_msg = await message.reply("Tʜᴇ ғɪʟᴇ ʜᴀs ʙᴇᴇɴ ɢᴏɴᴇ ! Cʟɪᴄᴋ ɢɪᴠᴇɴ ʙᴜᴛᴛᴏɴ ᴛᴏ ɢᴇᴛ ɪᴛ ᴀɢᴀɪɴ.", reply_markup=InlineKeyboardMarkup(buttons))
         
+        gone_msg = await message.reply("Tʜᴇ ғɪʟᴇ ʜᴀs ʙᴇᴇɴ ɢᴏɴᴇ ! Cʟɪᴄᴋ ɢɪᴠᴇɴ ʙᴜᴛᴛᴏɴ ᴛᴏ ɢᴇᴛ ɪᴛ ᴀɢᴀɪɴ.", reply_markup=InlineKeyboardMarkup(buttons))
         # 12 Hours Delete
         await asyncio.sleep(43200)
         try: await gone_msg.delete()
@@ -227,9 +229,6 @@ async def stats(bot, message):
     uptime = get_readable_time(time_now() - temp.START_TIME)
     await message.reply_text(script.STATUS_TXT.format(files, users, chats, prm, used, free, uptime))    
 
-# ... (Include other commands: link, index_channels, img_2_link, ping, plan, myplan, add_prm, rm_prm, prm_list, set_fsub, off/on_auto_filter, off/on_pm_search, restart, leave, users, chats, ban_user, unban_user, ban, mute, unban/unmute) ...
-# I will include the other commands below for a complete file.
-
 @Client.on_message(filters.command('link'))
 async def link(bot, message):
     msg = message.reply_to_message
@@ -250,8 +249,6 @@ async def channels_info(bot, message):
     if message.from_user.id not in ADMINS:
         await message.delete()
         return
-    # Now uses the dynamic index channel logic from utils if implemented, or Env
-    # For now, keeping env logic as utils.py doesn't have the dynamic getter unless we added it back
     ids = INDEX_CHANNELS
     if not ids: return await message.reply("Not set INDEX_CHANNELS")
     text = '**Indexed Channels:**\n\n'
@@ -321,7 +318,6 @@ async def ping(client, message):
     end_time = monotonic()
     await msg.edit(f'{round((end_time - start_time) * 1000)} ms')
 
-# --- PREMIUM COMMANDS ---
 @Client.on_message(filters.command('plan') & filters.private)
 async def plan(client, message):
     if not IS_PREMIUM: return await message.reply('Premium feature was disabled by admin')
@@ -525,24 +521,6 @@ async def unban_a_user(bot, message):
         await message.reply(f"User {user_id} unbanned successfully.")
     except Exception as e: await message.reply(f"Error: {e}")
 
-@Client.on_message(filters.command('ban_grp') & filters.user(ADMINS))
-async def disable_chat(bot, message):
-    try: chat = int(message.command[1])
-    except: return await message.reply('Give me a chat ID')
-    try:
-        await db.disable_chat(chat, "Banned by Admin")
-        await message.reply(f"Chat {chat} Disabled.")
-    except Exception as e: await message.reply(f"Error: {e}")
-
-@Client.on_message(filters.command('unban_grp') & filters.user(ADMINS))
-async def enable_chat(bot, message):
-    try: chat = int(message.command[1])
-    except: return await message.reply('Give me a chat ID')
-    try:
-        await db.re_enable_chat(chat)
-        await message.reply(f"Chat {chat} Enabled.")
-    except Exception as e: await message.reply(f"Error: {e}")
-
 # --- GROUP ADMIN COMMANDS ---
 @Client.on_message(filters.command('ban') & filters.group)
 async def ban_chat_user(client, message):
@@ -596,7 +574,6 @@ async def confirm_payment_handler(client, query):
         user_info = await client.get_users(user_id)
         await client.send_message(LOG_CHANNEL, f"#Premium_Added (Payment)\n\n👤 <b>User:</b> {user_info.mention} (`{user_id}`)\n🗓 <b>Plan:</b> {final_days} Days\n⏰ <b>Expires:</b> {ex.strftime('%d/%m/%Y')}\n👮‍♂️ <b>Approved By:</b> {query.from_user.mention}")
         
-        # Delete admin interaction messages
         try: await ask_msg.delete(); await msg.delete()
         except: pass
         
