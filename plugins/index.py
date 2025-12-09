@@ -11,7 +11,6 @@ from utils import temp, get_readable_time
 
 logger = logging.getLogger(__name__)
 lock = asyncio.Lock()
-RE_FILE_NAME_CLEANER = re.compile(r"@\w+|(_|\-|\.|\+)")
 
 # --- Custom Iterator Logic ---
 async def iter_messages(bot, chat_id, limit, offset):
@@ -163,6 +162,7 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip):
                     no_media += 1
                     continue
                 
+                # Check for Video, Document, Audio
                 elif message.media not in [enums.MessageMediaType.VIDEO, enums.MessageMediaType.DOCUMENT, enums.MessageMediaType.AUDIO]:
                     unsupported += 1
                     continue
@@ -172,13 +172,11 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip):
                     unsupported += 1
                     continue
                 
-                # --- FIX: Set file_type and caption ---
+                # Set Type and Caption
                 media.file_type = message.media.value
                 media.caption = message.caption
                 
-                if getattr(media, 'file_name', None):
-                    file_name = RE_FILE_NAME_CLEANER.sub(" ", str(media.file_name)).strip()
-                    media.file_name = file_name
+                # NOTE: File Name Cleaning removed from here as it is now handled in ia_filterdb.py
                 
                 sts = await save_file(media) 
                 
