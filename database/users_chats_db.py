@@ -1,6 +1,6 @@
 import datetime
 from motor.motor_asyncio import AsyncIOMotorClient
-# FIX: FILES_DATABASE_URL और SECOND_FILES_DATABASE_URL को इम्पोर्ट से हटा दिया गया है
+# FILES_DATABASE_URL हटा दिया गया है
 from info import (
     DATABASE_NAME, DATA_DATABASE_URL, 
     PROTECT_CONTENT, IMDB, SPELL_CHECK, 
@@ -13,7 +13,7 @@ from info import (
 mongo_client = AsyncIOMotorClient(DATA_DATABASE_URL)
 db_instance = mongo_client[DATABASE_NAME]
 
-# NOTE: files_db और data_db अब एक ही डेटाबेस (db_instance) को रेफर करते हैं
+# Compatibility Aliases (ताकि कोड के बाकी हिस्से क्रैश न हों)
 files_db = db_instance
 data_db = db_instance
 
@@ -56,7 +56,7 @@ class Database:
         self.req = db_instance.Requests
         self.con = db_instance.Connections
         self.stg = db_instance.Settings
-        # NEW: Filters & Notes Collections
+        # New Collections
         self.filters = db_instance.Filters
         self.note = db_instance.Notes
 
@@ -82,6 +82,18 @@ class Database:
             settings=self.default_setgs
         )
     
+    # --- STORAGE STATS FUNCTION ---
+    async def get_db_size(self):
+        try:
+            stats = await db_instance.command("dbstats")
+            used = stats.get('dataSize', 0)
+            # MongoDB Atlas Free Tier Limit = 512 MB
+            limit = 536870912 
+            free = limit - used
+            return used, free
+        except Exception:
+            return 0, 0
+
     # --- FILTERS FUNCTIONS ---
     async def add_filter(self, chat_id, name, filter_data):
         name = name.lower()
@@ -124,17 +136,25 @@ class Database:
     async def get_all_notes(self, chat_id):
         return self.note.find({'chat_id': int(chat_id)})
 
-    # --- STORAGE STATS FUNCTION ---
-    async def get_db_size(self):
-        try:
-            stats = await db_instance.command("dbstats")
-            used = stats.get('dataSize', 0)
-            limit = 536870912 # 512 MB Free Tier Limit
-            free = limit - used
-            return used, free
-        except Exception:
-            return 0, 0
+    # --- INDEX CHANNEL FUNCTIONS ---
+    async def add_index_channel(self, chat_id):
+        await self.stg.update_one(
+            {'id': BOT_ID},
+            {'$addToSet': {'index_channels': int(chat_id)}},
+            upsert=True
+        )
 
+    async def remove_index_channel(self, chat_id):
+        await self.stg.update_one(
+            {'id': BOT_ID},
+            {'$pull': {'index_channels': int(chat_id)}}
+        )
+
+    async def get_index_channels_db(self):
+        doc = await self.stg.find_one({'id': BOT_ID})
+        return doc.get('index_channels', []) if doc else []
+
+    # --- BASIC FUNCTIONS ---
     async def add_user(self, id, name):
         user = self.new_user(id, name)
         await self.col.insert_one(user)
@@ -217,12 +237,6 @@ class Database:
     
     async def get_all_chats(self):
         return self.grp.find({})
-    
-    async def get_files_db_size(self):
-        return (await files_db.command("dbstats"))['dataSize']
-    
-    async def get_data_db_size(self):
-        return (await data_db.command("dbstats"))['dataSize']
     
     async def get_all_chats_count(self):
         return await self.grp.count_documents({})
