@@ -80,7 +80,7 @@ class Bot(Client):
         await super().stop()
         logging.info("Bot Stopped. Bye!")
 
-    # --- PREMIUM EXPIRY CHECKER TASK ---
+    # --- PREMIUM EXPIRY CHECKER TASK (FIXED) ---
     async def check_premium_expiry(self):
         logging.info("Premium Expiry Checker Started...")
         while True:
@@ -95,16 +95,24 @@ class Bot(Client):
                         # Skip if not premium or no expiry date
                         if not plan_status.get('premium') or not isinstance(expiry_date, datetime):
                             continue
-                            
+                        
+                        # --- FIX: Ensure expiry_date is offset-aware ---
+                        if expiry_date.tzinfo is None:
+                            expiry_date = expiry_date.replace(tzinfo=timezone.utc)
+                        # -----------------------------------------------
+
                         # Calculate remaining time in seconds
                         now = datetime.now(timezone.utc)
                         delta = expiry_date - now
                         seconds = delta.total_seconds()
                         
                         # Format Expiry Time (e.g. 10/12/2025 08:30 PM)
-                        tz = pytz.timezone(TIME_ZONE)
-                        expiry_ist = expiry_date.astimezone(tz)
-                        expiry_str = expiry_ist.strftime("%d/%m/%Y %I:%M %p")
+                        try:
+                            tz = pytz.timezone(TIME_ZONE)
+                            expiry_ist = expiry_date.astimezone(tz)
+                            expiry_str = expiry_ist.strftime("%d/%m/%Y %I:%M %p")
+                        except:
+                            expiry_str = expiry_date.strftime("%d/%m/%Y %I:%M %p")
                         
                         # Renew Button
                         btn = InlineKeyboardMarkup([[InlineKeyboardButton("💎 Active Plan Now", callback_data="activate_plan")]])
@@ -144,7 +152,6 @@ class Bot(Client):
                             try:
                                 await self.send_message(chat_id=user_id, text=msg_text, reply_markup=btn)
                             except Exception as e:
-                                # User might have blocked the bot
                                 logging.error(f"Could not send reminder to {user_id}: {e}")
                                 
                     except Exception as e:
