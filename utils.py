@@ -11,6 +11,7 @@ from info import (
     ADMINS, IS_PREMIUM, PRE_DAY_AMOUNT, PICS, 
     UPI_ID, UPI_NAME, AUTH_CHANNEL, DB_CHANNEL
 )
+from hydrogram import enums
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.errors import FloodWait, InputUserDeactivated, UserIsBlocked, PeerIdInvalid
 from database.users_chats_db import db
@@ -26,8 +27,23 @@ class temp(object):
     B_ID = None
     BOT = None # Bot Instance for Web
     FILES = {} # For storing search results
+    SETTINGS = {} # For caching group settings
     CANCEL = False # For indexing cancellation
     MAINTENANCE = False # Future use
+
+# --- SETTINGS FUNCTIONS (FIXED: Added back) ---
+async def get_settings(group_id):
+    settings = temp.SETTINGS.get(group_id)
+    if not settings:
+        settings = await db.get_settings(group_id)
+        temp.SETTINGS[group_id] = settings
+    return settings
+
+async def save_group_settings(group_id, key, value):
+    current = await get_settings(group_id)
+    current[key] = value
+    temp.SETTINGS[group_id] = current
+    await db.update_settings(group_id, current)
 
 # --- TIME FORMATTER ---
 def get_readable_time(seconds: int) -> str:
@@ -58,7 +74,7 @@ def get_size(bytes, suffix="B"):
             return f"{bytes:.2f} {unit}{suffix}"
         bytes /= factor
 
-# --- BROADCAST FUNCTIONS (ADDED FIX) ---
+# --- BROADCAST FUNCTIONS ---
 async def broadcast_messages(user_id, message):
     try:
         await message.copy(chat_id=user_id)
@@ -171,7 +187,7 @@ def get_wish():
     else:
         return "Good Night 🌙"
 
-# --- SHORTLINK (Dummy - Removed) ---
+# --- SHORTLINK (Dummy) ---
 async def get_shortlink(url, api, link):
     return link 
 
