@@ -81,6 +81,14 @@ if not BIN_CHANNEL_STR.lstrip('-').isdigit():
     exit(1)
 BIN_CHANNEL = int(BIN_CHANNEL_STR)
 
+# --- MISSING VARIABLES ADDED HERE ---
+AUTH_CHANNEL_STR = environ.get('AUTH_CHANNEL', '')
+AUTH_CHANNEL = int(AUTH_CHANNEL_STR) if AUTH_CHANNEL_STR.lstrip('-').isdigit() else None
+
+DB_CHANNEL_STR = environ.get('DB_CHANNEL', '')
+DB_CHANNEL = int(DB_CHANNEL_STR) if DB_CHANNEL_STR.lstrip('-').isdigit() else None
+# ------------------------------------
+
 URL = environ.get("URL", "")
 if len(URL) == 0:
     logger.error('URL is missing, exiting now')
