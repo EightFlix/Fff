@@ -8,12 +8,16 @@ import logging.config
 import asyncio
 from aiohttp import web
 from time import time
+from datetime import datetime, timezone
+import pytz
 
 # Local Imports
-from info import API_ID, API_HASH, BOT_TOKEN, PORT, LOG_CHANNEL
+from info import API_ID, API_HASH, BOT_TOKEN, PORT, LOG_CHANNEL, TIME_ZONE
 from utils import temp
 from Script import script
 from web import web_app
+from database.users_chats_db import db
+from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Logging Setup
 logging.basicConfig(
@@ -39,7 +43,7 @@ class Bot(Client):
         # Set Start Time
         temp.START_TIME = time()
         
-        # --- CRITICAL FIX: Set Bot Instance for Web Server ---
+        # Set Bot Instance for Web Server
         temp.BOT = self 
         
         # Start Client
@@ -58,6 +62,9 @@ class Bot(Client):
         logging.info(f"Web Server Started on Port {PORT}")
         
         logging.info(f"@{me.username} Started Successfully! 🚀")
+        
+        # Start Premium Expiry Checker Loop
+        self.loop.create_task(self.check_premium_expiry())
 
         # Send Startup Log
         if LOG_CHANNEL:
@@ -72,6 +79,82 @@ class Bot(Client):
     async def stop(self, *args):
         await super().stop()
         logging.info("Bot Stopped. Bye!")
+
+    # --- PREMIUM EXPIRY CHECKER TASK ---
+    async def check_premium_expiry(self):
+        logging.info("Premium Expiry Checker Started...")
+        while True:
+            try:
+                # Iterate through all users in Premium Collection
+                async for user in await db.get_premium_users():
+                    try:
+                        user_id = user['id']
+                        plan_status = user.get('status', {})
+                        expiry_date = plan_status.get('expire')
+                        
+                        # Skip if not premium or no expiry date
+                        if not plan_status.get('premium') or not isinstance(expiry_date, datetime):
+                            continue
+                            
+                        # Calculate remaining time in seconds
+                        now = datetime.now(timezone.utc)
+                        delta = expiry_date - now
+                        seconds = delta.total_seconds()
+                        
+                        # Format Expiry Time (e.g. 10/12/2025 08:30 PM)
+                        tz = pytz.timezone(TIME_ZONE)
+                        expiry_ist = expiry_date.astimezone(tz)
+                        expiry_str = expiry_ist.strftime("%d/%m/%Y %I:%M %p")
+                        
+                        # Renew Button
+                        btn = InlineKeyboardMarkup([[InlineKeyboardButton("💎 Active Plan Now", callback_data="activate_plan")]])
+                        
+                        msg_text = None
+                        
+                        # --- REMINDER LOGIC (Checks every 60s) ---
+                        
+                        # 12 Hours Left (43200 sec) - Check window: 43200 to 43260
+                        if 43200 <= seconds < 43260:
+                            msg_text = f"<b>⚠️ Premium Expiring Soon!</b>\n\nYour premium plan expires in <b>12 Hours</b>.\n📅 <b>Expiry:</b> <code>{expiry_str}</code>"
+                        
+                        # 6 Hours Left
+                        elif 21600 <= seconds < 21660:
+                            msg_text = f"<b>⚠️ Premium Expiring Soon!</b>\n\nYour premium plan expires in <b>6 Hours</b>.\n📅 <b>Expiry:</b> <code>{expiry_str}</code>"
+                            
+                        # 3 Hours Left
+                        elif 10800 <= seconds < 10860:
+                            msg_text = f"<b>⚠️ Premium Expiring Soon!</b>\n\nYour premium plan expires in <b>3 Hours</b>.\n📅 <b>Expiry:</b> <code>{expiry_str}</code>"
+                            
+                        # 1 Hour Left
+                        elif 3600 <= seconds < 3660:
+                            msg_text = f"<b>⚠️ Premium Expiring Soon!</b>\n\nYour premium plan expires in <b>1 Hour</b>.\n📅 <b>Expiry:</b> <code>{expiry_str}</code>"
+                            
+                        # 10 Minutes Left
+                        elif 600 <= seconds < 660:
+                            msg_text = f"<b>⚠️ Premium Expiring Soon!</b>\n\nYour premium plan expires in <b>10 Minutes</b>.\n📅 <b>Expiry:</b> <code>{expiry_str}</code>"
+                            
+                        # Expired (<= 0)
+                        elif seconds <= 0:
+                            msg_text = f"<b>❌ Premium Expired!</b>\n\nYour premium plan has expired on <b>{expiry_str}</b>.\n\nRenew now to continue enjoying exclusive features."
+                            # Remove Premium Status from DB immediately
+                            await db.update_plan(user_id, {'expire': '', 'trial': False, 'plan': '', 'premium': False})
+                        
+                        # Send Message if condition met
+                        if msg_text:
+                            try:
+                                await self.send_message(chat_id=user_id, text=msg_text, reply_markup=btn)
+                            except Exception as e:
+                                # User might have blocked the bot
+                                logging.error(f"Could not send reminder to {user_id}: {e}")
+                                
+                    except Exception as e:
+                        logging.error(f"Error checking user {user.get('id')}: {e}")
+                        
+            except Exception as e:
+                logging.error(f"Error in premium checker loop: {e}")
+            
+            # Wait for 60 seconds before next check
+            await asyncio.sleep(60)
 
 if __name__ == "__main__":
     # Event Loop Policy for Python 3.11+
