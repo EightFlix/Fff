@@ -8,6 +8,7 @@ import logging.config
 import asyncio
 from aiohttp import web
 from time import time
+# Correct Imports for Timezone
 from datetime import datetime, timezone
 import pytz
 
@@ -46,6 +47,14 @@ class Bot(Client):
         # Set Bot Instance for Web Server
         temp.BOT = self 
         
+        # Load Banned Users/Chats (To prevent initial empty list issue)
+        try:
+            b_users, b_chats = await db.get_banned()
+            temp.BANNED_USERS = b_users
+            temp.BANNED_CHATS = b_chats
+        except Exception as e:
+            logging.error(f"Error loading banned list: {e}")
+
         # Start Client
         await super().start()
         me = await self.get_me()
@@ -80,7 +89,7 @@ class Bot(Client):
         await super().stop()
         logging.info("Bot Stopped. Bye!")
 
-    # --- PREMIUM EXPIRY CHECKER TASK (FIXED) ---
+    # --- PREMIUM EXPIRY CHECKER TASK ---
     async def check_premium_expiry(self):
         logging.info("Premium Expiry Checker Started...")
         while True:
@@ -106,7 +115,7 @@ class Bot(Client):
                         delta = expiry_date - now
                         seconds = delta.total_seconds()
                         
-                        # Format Expiry Time (e.g. 10/12/2025 08:30 PM)
+                        # Format Expiry Time
                         try:
                             tz = pytz.timezone(TIME_ZONE)
                             expiry_ist = expiry_date.astimezone(tz)
@@ -120,39 +129,25 @@ class Bot(Client):
                         msg_text = None
                         
                         # --- REMINDER LOGIC (Checks every 60s) ---
-                        
-                        # 12 Hours Left (43200 sec) - Check window: 43200 to 43260
-                        if 43200 <= seconds < 43260:
+                        if 43200 <= seconds < 43260: # 12 Hours
                             msg_text = f"<b>⚠️ Premium Expiring Soon!</b>\n\nYour premium plan expires in <b>12 Hours</b>.\n📅 <b>Expiry:</b> <code>{expiry_str}</code>"
-                        
-                        # 6 Hours Left
-                        elif 21600 <= seconds < 21660:
+                        elif 21600 <= seconds < 21660: # 6 Hours
                             msg_text = f"<b>⚠️ Premium Expiring Soon!</b>\n\nYour premium plan expires in <b>6 Hours</b>.\n📅 <b>Expiry:</b> <code>{expiry_str}</code>"
-                            
-                        # 3 Hours Left
-                        elif 10800 <= seconds < 10860:
+                        elif 10800 <= seconds < 10860: # 3 Hours
                             msg_text = f"<b>⚠️ Premium Expiring Soon!</b>\n\nYour premium plan expires in <b>3 Hours</b>.\n📅 <b>Expiry:</b> <code>{expiry_str}</code>"
-                            
-                        # 1 Hour Left
-                        elif 3600 <= seconds < 3660:
+                        elif 3600 <= seconds < 3660: # 1 Hour
                             msg_text = f"<b>⚠️ Premium Expiring Soon!</b>\n\nYour premium plan expires in <b>1 Hour</b>.\n📅 <b>Expiry:</b> <code>{expiry_str}</code>"
-                            
-                        # 10 Minutes Left
-                        elif 600 <= seconds < 660:
+                        elif 600 <= seconds < 660: # 10 Minutes
                             msg_text = f"<b>⚠️ Premium Expiring Soon!</b>\n\nYour premium plan expires in <b>10 Minutes</b>.\n📅 <b>Expiry:</b> <code>{expiry_str}</code>"
-                            
-                        # Expired (<= 0)
-                        elif seconds <= 0:
+                        elif seconds <= 0: # Expired
                             msg_text = f"<b>❌ Premium Expired!</b>\n\nYour premium plan has expired on <b>{expiry_str}</b>.\n\nRenew now to continue enjoying exclusive features."
-                            # Remove Premium Status from DB immediately
                             await db.update_plan(user_id, {'expire': '', 'trial': False, 'plan': '', 'premium': False})
                         
-                        # Send Message if condition met
                         if msg_text:
                             try:
                                 await self.send_message(chat_id=user_id, text=msg_text, reply_markup=btn)
-                            except Exception as e:
-                                logging.error(f"Could not send reminder to {user_id}: {e}")
+                            except Exception:
+                                pass
                                 
                     except Exception as e:
                         logging.error(f"Error checking user {user.get('id')}: {e}")
@@ -160,11 +155,9 @@ class Bot(Client):
             except Exception as e:
                 logging.error(f"Error in premium checker loop: {e}")
             
-            # Wait for 60 seconds before next check
             await asyncio.sleep(60)
 
 if __name__ == "__main__":
-    # Event Loop Policy for Python 3.11+
     try:
         import uvloop
         uvloop.install()
