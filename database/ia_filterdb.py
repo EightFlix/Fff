@@ -27,29 +27,25 @@ async def create_text_index():
     except Exception as e:
         logger.warning(f"Index Error: {e}")
 
+# --- SAVE FILE (INSERT ONLY) ---
 async def save_file(media):
     file_id = unpack_new_file_id(media.file_id)
     
-    # --- FILENAME CLEANING ---
+    # Cleaning Logic
     original_name = str(media.file_name or "")
-    
     clean_name = RE_SPECIAL.sub(" ", original_name)
     clean_name = RE_USERNAMES.sub("", clean_name)
     clean_name = RE_BRACKETS.sub("", clean_name)
     clean_name = RE_SPACES.sub(" ", clean_name)
-    
-    # 🔥 CHANGE: .lower() -> .title() (For "Iron Man" look)
     file_name = clean_name.strip().title()
     
-    # --- CAPTION CLEANING ---
     original_caption = str(media.caption or "")
     clean_caption = RE_SPECIAL.sub(" ", original_caption)
     clean_caption = RE_USERNAMES.sub("", clean_caption)
     clean_caption = RE_BRACKETS.sub("", clean_caption)
     clean_caption = RE_EXTENSIONS.sub("", clean_caption)
     clean_caption = RE_SPACES.sub(" ", clean_caption)
-    
-    file_caption = clean_caption.strip() # Keep caption case as is or .lower()
+    file_caption = clean_caption.strip()
     
     document = {
         '_id': file_id,
@@ -70,6 +66,45 @@ async def save_file(media):
         logger.error(f"❌ Error Saving: {e}")
         return 'err'
 
+# --- 🔥 NEW: UPDATE FILE (FOR EDITS) ---
+async def update_file(media):
+    """
+    Updates the existing file in Database when edited in Channel.
+    """
+    file_id = unpack_new_file_id(media.file_id)
+    
+    # Same Cleaning Logic as save_file
+    original_name = str(media.file_name or "")
+    clean_name = RE_SPECIAL.sub(" ", original_name)
+    clean_name = RE_USERNAMES.sub("", clean_name)
+    clean_name = RE_BRACKETS.sub("", clean_name)
+    clean_name = RE_SPACES.sub(" ", clean_name)
+    file_name = clean_name.strip().title()
+    
+    original_caption = str(media.caption or "")
+    clean_caption = RE_SPECIAL.sub(" ", original_caption)
+    clean_caption = RE_USERNAMES.sub("", clean_caption)
+    clean_caption = RE_BRACKETS.sub("", clean_caption)
+    clean_caption = RE_EXTENSIONS.sub("", clean_caption)
+    clean_caption = RE_SPACES.sub(" ", clean_caption)
+    file_caption = clean_caption.strip()
+    
+    try:
+        # Update existing document
+        await collection.update_one(
+            {'_id': file_id},
+            {'$set': {
+                'file_name': file_name,
+                'caption': file_caption,
+                'file_size': media.file_size
+            }}
+        )
+        logger.info(f"📝 Updated: {file_name[:50]}...")
+        return 'suc'
+    except Exception as e:
+        logger.error(f"❌ Error Updating: {e}")
+        return 'err'
+
 async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None):
     query = str(query).strip().lower()
     query = RE_SPECIAL.sub(" ", query)
@@ -78,7 +113,6 @@ async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None):
     if not query:
         return [], "", 0
 
-    # --- LAYER 1: Text Search ---
     text_results = []
     total_text_results = 0
     text_search_failed = False
@@ -108,8 +142,6 @@ async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None):
         logger.error(f"Text Search Error: {e}")
         text_search_failed = True
 
-    # --- LAYER 2: Regex Search (Fallback) ---
-    # 🔥 FIXED: Added Pagination logic here too!
     if total_text_results == 0 or text_search_failed:
         try:
             words = query.split()
@@ -132,10 +164,9 @@ async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None):
                 
                 if total_results_regex > 0:
                     cursor = collection.find(regex_filter).sort('_id', -1)
-                    cursor.skip(offset).limit(max_results) # 🔥 Added SKIP
+                    cursor.skip(offset).limit(max_results)
                     files = [doc async for doc in cursor]
                     
-                    # 🔥 Calculate Next Offset
                     next_offset = offset + len(files)
                     if next_offset >= total_results_regex or len(files) == 0:
                         next_offset = ""
