@@ -30,7 +30,6 @@ BUTTONS = {}
 CAP = {}
 
 # --- 🔥 COMPILED REGEX FOR EXTENSIONS ---
-# यह लिस्ट नाम में से mp4, mkv, avi को हटा देगी
 EXT_PATTERN = re.compile(r"\b(mkv|mp4|avi|m4v|webm|flv|mov|wmv|3gp|mpg|mpeg)\b", re.IGNORECASE)
 
 # --- 🔍 PM SEARCH HANDLER ---
@@ -54,6 +53,21 @@ async def pm_search(client, message):
 # --- 🏘️ GROUP SEARCH HANDLER ---
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def group_search(client, message):
+    # 🛑 SUPPORT GROUP CHECK 🛑
+    # 1. No Search (Ignore Movies)
+    # 2. Auto Delete Links after 5 Minutes (Even for Admins)
+    if message.chat.id == SUPPORT_GROUP:
+        # Check for Links (http, https, www, t.me)
+        if re.findall(r'https?://\S+|www\.\S+|t\.me/\S+', message.text):
+            async def delete_link():
+                await asyncio.sleep(300) # 5 Minutes Wait
+                try: await message.delete()
+                except: pass
+            
+            # Run in background (Fire & Forget)
+            asyncio.create_task(delete_link())
+        return
+
     user_id = message.from_user.id if message.from_user else 0
     
     if not await is_premium(user_id, client):
@@ -63,13 +77,6 @@ async def group_search(client, message):
     if not stg: stg = {'AUTO_FILTER': True}
         
     if stg.get('AUTO_FILTER', True):
-        if message.chat.id == SUPPORT_GROUP:
-            files, offset, total = await get_search_results(message.text)
-            if files:
-                btn = [[InlineKeyboardButton("📂 Get Files Here", url=FILMS_LINK)]]
-                await message.reply_text(f'<b>✅ Fᴏᴜɴᴅ {total} Rᴇsᴜʟᴛs!</b>', reply_markup=InlineKeyboardMarkup(btn))
-            return
-            
         if message.text.startswith("/"): return
         
         if '@admin' in message.text.lower() or '@admins' in message.text.lower():
@@ -121,11 +128,8 @@ async def next_page(bot, query):
     
     files_link = ''
     for index, file in enumerate(files, start=offset+1):
-        # 1. Remove Extensions
         f_name = EXT_PATTERN.sub("", file['file_name'])
-        # 2. Clean Spaces
         f_name = re.sub(r"\s+", " ", f_name).strip()
-        # 3. Title Case & L Fix
         f_name = f_name.title().replace(" L ", " l ")
         
         files_link += f"""\n\n<b>{index}. <a href=https://t.me/{temp.U_NAME}?start=file_{query.message.chat.id}_{file['_id']}>[{get_size(file['file_size'])}] {f_name}</a></b>"""
@@ -187,11 +191,8 @@ async def auto_filter(client, msg, s, spoll=False):
     
     files_link = ''
     for index, file in enumerate(files, start=1):
-        # 1. Remove Extensions
         f_name = EXT_PATTERN.sub("", file['file_name'])
-        # 2. Clean Spaces
         f_name = re.sub(r"\s+", " ", f_name).strip()
-        # 3. Title Case & L Fix
         f_name = f_name.title().replace(" L ", " l ")
         
         files_link += f"""\n\n<b>{index}. <a href=https://t.me/{temp.U_NAME}?start=file_{message.chat.id}_{file['_id']}>[{get_size(file['file_size'])}] {f_name}</a></b>"""
@@ -268,11 +269,8 @@ async def quality_search(client: Client, query: CallbackQuery):
 
     files_link = ''
     for index, file in enumerate(files, start=1):
-        # 1. Remove Extensions
         f_name = EXT_PATTERN.sub("", file['file_name'])
-        # 2. Clean Spaces
         f_name = re.sub(r"\s+", " ", f_name).strip()
-        # 3. Title Case & L Fix
         f_name = f_name.title().replace(" L ", " l ")
         
         files_link += f"""\n\n<b>{index}. <a href=https://t.me/{temp.U_NAME}?start=file_{query.message.chat.id}_{file['_id']}>[{get_size(file['file_size'])}] {f_name}</a></b>"""
