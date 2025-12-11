@@ -1,6 +1,5 @@
 import logging
 from hydrogram import Client, filters
-from hydrogram.errors import InvalidQueryType
 from hydrogram.types import (
     InlineQueryResultCachedDocument,
     InlineQueryResultArticle,
@@ -22,10 +21,9 @@ async def answer(client, query):
     if query.query == "":
         return
 
-    # 2. Check Premium (Optional - If you want strict premium on inline too)
+    # 2. Check Premium (Optional)
     if IS_PREMIUM:
         if not await is_premium(query.from_user.id, client):
-            # Show "Upgrade to Premium" button if not premium
             results = [
                 InlineQueryResultArticle(
                     title="💎 Premium Only",
@@ -55,7 +53,6 @@ async def answer(client, query):
             f_name = file.get('file_name', '')
             f_size = get_size(file.get('file_size', 0))
             
-            # Create Result Item
             results.append(
                 InlineQueryResultCachedDocument(
                     title=f_name,
@@ -68,7 +65,6 @@ async def answer(client, query):
                 )
             )
     else:
-        # No Results Found
         if offset == 0:
             results.append(
                 InlineQueryResultArticle(
@@ -80,7 +76,7 @@ async def answer(client, query):
                 )
             )
 
-    # 5. Send Answer
+    # 5. Send Answer (Fixed Error Handling)
     try:
         await query.answer(
             results=results,
@@ -88,7 +84,6 @@ async def answer(client, query):
             next_offset=str(next_offset) if next_offset else "",
             is_personal=True
         )
-    except InvalidQueryType:
-        pass
     except Exception as e:
-        logger.error(f"Inline Error: {e}")
+        # Log error generally instead of crashing
+        logger.warning(f"Inline Answer Error: {e}")
