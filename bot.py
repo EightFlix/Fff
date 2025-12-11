@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 import pytz
 
 # Local Imports
-# FIX: Added ADMINS to imports
 from info import API_ID, API_HASH, BOT_TOKEN, PORT, LOG_CHANNEL, TIME_ZONE, ADMINS
 from utils import temp
 from Script import script
@@ -41,10 +40,7 @@ class Bot(Client):
         )
 
     async def start(self):
-        # Set Start Time
         temp.START_TIME = time()
-        
-        # Set Bot Instance for Web Server
         temp.BOT = self 
         
         # Load Banned Users/Chats
@@ -55,16 +51,13 @@ class Bot(Client):
         except Exception as e:
             logging.error(f"Error loading banned list: {e}")
 
-        # Start Client
         await super().start()
         me = await self.get_me()
         
-        # Set Temp Variables
         temp.U_NAME = me.username
         temp.B_NAME = me.first_name
         temp.B_ID = me.id
         
-        # Start Web Server (For Streaming)
         app = web.AppRunner(web_app)
         await app.setup()
         await web.TCPSite(app, "0.0.0.0", PORT).start()
@@ -72,17 +65,14 @@ class Bot(Client):
         
         logging.info(f"@{me.username} Started Successfully! 🚀")
         
-        # Start Premium Expiry Checker Loop
         self.loop.create_task(self.check_premium_expiry())
 
-        # --- SEND STARTUP NOTIFICATION ---
         try:
             tz = pytz.timezone(TIME_ZONE)
             start_time_str = datetime.now(tz).strftime("%d/%m/%Y %I:%M %p")
         except:
             start_time_str = str(datetime.now())
 
-        # 1. Send to LOG_CHANNEL
         if LOG_CHANNEL:
             try:
                 await self.send_message(
@@ -92,7 +82,6 @@ class Bot(Client):
             except Exception as e:
                 logging.error(f"Failed to send log to Log Channel: {e}")
 
-        # 2. Send to ADMINS (New Feature)
         if ADMINS:
             for admin_id in ADMINS:
                 try:
@@ -112,27 +101,22 @@ class Bot(Client):
         logging.info("Premium Expiry Checker Started...")
         while True:
             try:
-                # Iterate through all users in Premium Collection
                 async for user in await db.get_premium_users():
                     try:
                         user_id = user['id']
                         plan_status = user.get('status', {})
                         expiry_date = plan_status.get('expire')
                         
-                        # Skip if not premium or no expiry date
                         if not plan_status.get('premium') or not isinstance(expiry_date, datetime):
                             continue
                         
-                        # Ensure expiry_date is offset-aware
                         if expiry_date.tzinfo is None:
                             expiry_date = expiry_date.replace(tzinfo=timezone.utc)
 
-                        # Calculate remaining time in seconds
                         now = datetime.now(timezone.utc)
                         delta = expiry_date - now
                         seconds = delta.total_seconds()
                         
-                        # Format Expiry Time
                         try:
                             tz = pytz.timezone(TIME_ZONE)
                             expiry_ist = expiry_date.astimezone(tz)
@@ -140,9 +124,7 @@ class Bot(Client):
                         except:
                             expiry_str = expiry_date.strftime("%d/%m/%Y %I:%M %p")
                         
-                        # Renew Button
                         btn = InlineKeyboardMarkup([[InlineKeyboardButton("💎 Active Plan Now", callback_data="activate_plan")]])
-                        
                         msg_text = None
                         
                         # --- REMINDER LOGIC (Checks every 60s) ---
@@ -161,10 +143,26 @@ class Bot(Client):
                             await db.update_plan(user_id, {'expire': '', 'trial': False, 'plan': '', 'premium': False})
                         
                         if msg_text:
+                            # --- AUTO DELETE OLD REMINDER ---
+                            old_msg_id = temp.PREMIUM_REMINDERS.get(user_id)
+                            if old_msg_id:
+                                try:
+                                    await self.delete_messages(user_id, old_msg_id)
+                                except Exception:
+                                    pass # Msg might be deleted by user
+                            
+                            # --- SEND NEW REMINDER ---
                             try:
-                                await self.send_message(chat_id=user_id, text=msg_text, reply_markup=btn)
-                            except Exception:
-                                pass
+                                sent_msg = await self.send_message(chat_id=user_id, text=msg_text, reply_markup=btn)
+                                # Save new message ID
+                                temp.PREMIUM_REMINDERS[user_id] = sent_msg.id
+                                
+                                # If Expired, remove from tracker
+                                if seconds <= 0:
+                                    temp.PREMIUM_REMINDERS.pop(user_id, None)
+                                    
+                            except Exception as e:
+                                logging.error(f"Could not send reminder to {user_id}: {e}")
                                 
                     except Exception as e:
                         logging.error(f"Error checking user {user.get('id')}: {e}")
