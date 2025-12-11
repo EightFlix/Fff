@@ -1,15 +1,17 @@
 import sys
 import glob
 import importlib
-from pathlib import Path
-from hydrogram import Client, idle
 import logging
 import logging.config
 import asyncio
-from aiohttp import web
+import platform
+from pathlib import Path
 from time import time
 from datetime import datetime, timezone
 import pytz
+from aiohttp import web
+from hydrogram import Client, idle, __version__ as hydro_ver
+from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Local Imports
 from info import API_ID, API_HASH, BOT_TOKEN, PORT, LOG_CHANNEL, TIME_ZONE, ADMINS
@@ -17,7 +19,6 @@ from utils import temp
 from Script import script
 from web import web_app
 from database.users_chats_db import db
-from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Logging Setup
 logging.basicConfig(
@@ -40,6 +41,7 @@ class Bot(Client):
         )
 
     async def start(self):
+        # Set Start Time
         temp.START_TIME = time()
         temp.BOT = self 
         
@@ -51,6 +53,7 @@ class Bot(Client):
         except Exception as e:
             logging.error(f"Error loading banned list: {e}")
 
+        # Start Client
         await super().start()
         me = await self.get_me()
         
@@ -58,39 +61,49 @@ class Bot(Client):
         temp.B_NAME = me.first_name
         temp.B_ID = me.id
         
+        # Start Web Server
         app = web.AppRunner(web_app)
         await app.setup()
         await web.TCPSite(app, "0.0.0.0", PORT).start()
         logging.info(f"Web Server Started on Port {PORT}")
-        
         logging.info(f"@{me.username} Started Successfully! 🚀")
         
+        # Start Premium Expiry Checker Task
         self.loop.create_task(self.check_premium_expiry())
 
+        # --- SMART STARTUP LOG ---
         try:
             tz = pytz.timezone(TIME_ZONE)
-            start_time_str = datetime.now(tz).strftime("%d/%m/%Y %I:%M %p")
+            now = datetime.now(tz)
+            date_str = now.strftime("%d %b %Y")
+            time_str = now.strftime("%I:%M %p")
         except:
-            start_time_str = str(datetime.now())
+            date_str = "Unknown"
+            time_str = "Unknown"
 
         if LOG_CHANNEL:
             try:
-                await self.send_message(
-                    chat_id=LOG_CHANNEL,
-                    text=f"<b>🚀 {me.mention} Is Online!</b>\n\n<b>📅 Date:</b> <code>{start_time_str}</code>"
+                txt = (
+                    f"<b>🚀 Bᴏᴛ Sᴛᴀʀᴛᴇᴅ Sᴜᴄᴄᴇssғᴜʟʟʏ!</b>\n\n"
+                    f"<b>🤖 Bᴏᴛ:</b> @{me.username}\n"
+                    f"<b>🐍 Pʏᴛʜᴏɴ:</b> <code>{platform.python_version()}</code>\n"
+                    f"<b>📡 Hʏᴅʀᴏɢʀᴀᴍ:</b> <code>{hydro_ver}</code>\n"
+                    f"<b>📅 Dᴀᴛᴇ:</b> <code>{date_str}</code>\n"
+                    f"<b>⌚ Tɪᴍᴇ:</b> <code>{time_str}</code>"
                 )
+                await self.send_message(chat_id=LOG_CHANNEL, text=txt)
             except Exception as e:
-                logging.error(f"Failed to send log to Log Channel: {e}")
+                logging.error(f"Failed to send log: {e}")
 
         if ADMINS:
             for admin_id in ADMINS:
                 try:
                     await self.send_message(
                         chat_id=admin_id,
-                        text=f"<b>🚀 {me.mention} Is Online!</b>\n\n<b>📅 Date:</b> <code>{start_time_str}</code>"
+                        text=f"<b>✅ {me.mention} is now Online!</b>\n📅 <code>{date_str} • {time_str}</code>"
                     )
-                except Exception as e:
-                    logging.error(f"Failed to send log to Admin {admin_id}: {e}")
+                except:
+                    pass
 
     async def stop(self, *args):
         await super().stop()
@@ -110,6 +123,7 @@ class Bot(Client):
                         if not plan_status.get('premium') or not isinstance(expiry_date, datetime):
                             continue
                         
+                        # Fix Timezone Offset
                         if expiry_date.tzinfo is None:
                             expiry_date = expiry_date.replace(tzinfo=timezone.utc)
 
@@ -117,29 +131,43 @@ class Bot(Client):
                         delta = expiry_date - now
                         seconds = delta.total_seconds()
                         
+                        # Readable Date
                         try:
                             tz = pytz.timezone(TIME_ZONE)
                             expiry_ist = expiry_date.astimezone(tz)
-                            expiry_str = expiry_ist.strftime("%d/%m/%Y %I:%M %p")
+                            expiry_str = expiry_ist.strftime("%d %b %Y, %I:%M %p")
                         except:
-                            expiry_str = expiry_date.strftime("%d/%m/%Y %I:%M %p")
+                            expiry_str = expiry_date.strftime("%d %b %Y, %I:%M %p")
                         
-                        btn = InlineKeyboardMarkup([[InlineKeyboardButton("💎 Active Plan Now", callback_data="activate_plan")]])
+                        btn = InlineKeyboardMarkup([[InlineKeyboardButton("💎 Aᴄᴛɪᴠᴇ Pʟᴀɴ Nᴏᴡ", callback_data="activate_plan")]])
                         msg_text = None
                         
-                        # --- REMINDER LOGIC (Checks every 60s) ---
-                        if 43200 <= seconds < 43260: # 12 Hours
-                            msg_text = f"<b>⚠️ Premium Expiring Soon!</b>\n\nYour premium plan expires in <b>12 Hours</b>.\n📅 <b>Expiry:</b> <code>{expiry_str}</code>"
-                        elif 21600 <= seconds < 21660: # 6 Hours
-                            msg_text = f"<b>⚠️ Premium Expiring Soon!</b>\n\nYour premium plan expires in <b>6 Hours</b>.\n📅 <b>Expiry:</b> <code>{expiry_str}</code>"
-                        elif 10800 <= seconds < 10860: # 3 Hours
-                            msg_text = f"<b>⚠️ Premium Expiring Soon!</b>\n\nYour premium plan expires in <b>3 Hours</b>.\n📅 <b>Expiry:</b> <code>{expiry_str}</code>"
-                        elif 3600 <= seconds < 3660: # 1 Hour
-                            msg_text = f"<b>⚠️ Premium Expiring Soon!</b>\n\nYour premium plan expires in <b>1 Hour</b>.\n📅 <b>Expiry:</b> <code>{expiry_str}</code>"
-                        elif 600 <= seconds < 660: # 10 Minutes
-                            msg_text = f"<b>⚠️ Premium Expiring Soon!</b>\n\nYour premium plan expires in <b>10 Minutes</b>.\n📅 <b>Expiry:</b> <code>{expiry_str}</code>"
-                        elif seconds <= 0: # Expired
-                            msg_text = f"<b>❌ Premium Expired!</b>\n\nYour premium plan has expired on <b>{expiry_str}</b>.\n\nRenew now to continue enjoying exclusive features."
+                        # --- REMINDER LOGIC (With Dynamic Emojis) ---
+                        
+                        # 12 Hours Left
+                        if 43200 <= seconds < 43260:
+                            msg_text = f"<b>🕛 Pʀᴇᴍɪᴜᴍ Exᴘɪʀɪɴɢ Sᴏᴏɴ!</b>\n\nYour premium plan expires in <b>12 Hours</b>.\n📅 <b>Expiry:</b> <code>{expiry_str}</code>"
+                        
+                        # 6 Hours Left
+                        elif 21600 <= seconds < 21660:
+                            msg_text = f"<b>🕕 Pʀᴇᴍɪᴜᴍ Exᴘɪʀɪɴɢ Sᴏᴏɴ!</b>\n\nYour premium plan expires in <b>6 Hours</b>.\n📅 <b>Expiry:</b> <code>{expiry_str}</code>"
+                            
+                        # 3 Hours Left
+                        elif 10800 <= seconds < 10860:
+                            msg_text = f"<b>🕒 Pʀᴇᴍɪᴜᴍ Exᴘɪʀɪɴɢ Sᴏᴏɴ!</b>\n\nYour premium plan expires in <b>3 Hours</b>.\n📅 <b>Expiry:</b> <code>{expiry_str}</code>"
+                            
+                        # 1 Hour Left
+                        elif 3600 <= seconds < 3660:
+                            msg_text = f"<b>🕐 Pʀᴇᴍɪᴜᴍ Exᴘɪʀɪɴɢ Sᴏᴏɴ!</b>\n\nYour premium plan expires in <b>1 Hour</b>.\n📅 <b>Expiry:</b> <code>{expiry_str}</code>"
+                            
+                        # 10 Minutes Left
+                        elif 600 <= seconds < 660:
+                            msg_text = f"<b>⚠️ Hᴜʀʀʏ Uᴘ!</b>\n\nYour premium plan expires in just <b>10 Minutes</b>.\n📅 <b>Expiry:</b> <code>{expiry_str}</code>"
+                            
+                        # Expired (<= 0)
+                        elif seconds <= 0:
+                            msg_text = f"<b>🚫 Pʀᴇᴍɪᴜᴍ Exᴘɪʀᴇᴅ!</b>\n\nYour plan expired on <b>{expiry_str}</b>.\n<i>Renew now to continue enjoying exclusive features.</i>"
+                            # Reset in DB
                             await db.update_plan(user_id, {'expire': '', 'trial': False, 'plan': '', 'premium': False})
                         
                         if msg_text:
@@ -149,15 +177,14 @@ class Bot(Client):
                                 try:
                                     await self.delete_messages(user_id, old_msg_id)
                                 except Exception:
-                                    pass # Msg might be deleted by user
+                                    pass 
                             
                             # --- SEND NEW REMINDER ---
                             try:
                                 sent_msg = await self.send_message(chat_id=user_id, text=msg_text, reply_markup=btn)
-                                # Save new message ID
                                 temp.PREMIUM_REMINDERS[user_id] = sent_msg.id
                                 
-                                # If Expired, remove from tracker
+                                # Clear cache if expired
                                 if seconds <= 0:
                                     temp.PREMIUM_REMINDERS.pop(user_id, None)
                                     
