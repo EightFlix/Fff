@@ -5,6 +5,7 @@ from aiohttp import web
 from utils import temp
 from info import BIN_CHANNEL
 from web.utils.render_template import media_watch
+from hydrogram.errors import RPCError # Import Added
 
 routes = web.RouteTableDef()
 logger = logging.getLogger(__name__)
@@ -64,17 +65,14 @@ async def stream_handler(request):
             if len(parts) > 1 and parts[1]:
                 limit = int(parts[1]) + 1
         
-        # --- FIX 1: Safety Checks ---
+        # Safety Bounds
         if offset >= file_size:
             return web.Response(status=416, text="Requested Range Not Satisfiable")
-            
         if limit > file_size:
             limit = file_size
             
         content_length = limit - offset
-        # ----------------------------
 
-        # Prepare Response
         response = web.StreamResponse(
             status=206 if range_header else 200,
             reason='Partial Content' if range_header else 'OK'
@@ -87,16 +85,16 @@ async def stream_handler(request):
         
         await response.prepare(request)
         
-        # --- FIX 2: Graceful Streaming ---
+        # Stream Content
         try:
             async for chunk in temp.BOT.stream_media(file_id, limit=content_length, offset=offset):
                 await response.write(chunk)
         except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
-            # Client disconnected (Normal behavior, ignore error)
-            pass
+            pass # Client disconnected
+        except RPCError:
+            pass # Telegram Offset Invalid (End of file reached or seek error)
         except Exception as e:
-            # Log only real errors
-            logger.debug(f"Stream interrupted: {e}")
+            logger.debug(f"Stream Error: {e}")
             
         return response
         
