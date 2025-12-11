@@ -1,72 +1,127 @@
 class script(object):
 
-    START_TXT = """<b>ʜᴇʏ {}, <i>{}</i></b><br>    <br><b>Premium Filter With PM Search ⚡</b>"""
+    # --- 👋 START MESSAGE ---
+    # Used in: commands.py (start)
+    START_TXT = """<b>👋 Hᴇʟʟᴏ {}, {}!</b>
 
-    # Stats Format
-    STATUS_TXT = """<b>🗃 Total Files:</b> <code>{}</code>
-<b>👤 Total Users:</b> <code>{}</code>
-<b>💬 Total Chats:</b> <code>{}</code>
-<b>🚀 Premium Users:</b> <code>{}</code>
+I ᴀᴍ ᴀɴ ᴀᴅᴠᴀɴᴄᴇᴅ <b>Pʀᴇᴍɪᴜᴍ Aᴜᴛᴏ Fɪʟᴛᴇʀ Bᴏᴛ</b>. ⚡
+I ᴄᴀɴ ᴘʀᴏᴠɪᴅᴇ ᴍᴏᴠɪᴇs, sᴇʀɪᴇs, ᴀɴᴅ ғɪʟᴇs ᴅɪʀᴇᴄᴛʟʏ ɪɴ ʏᴏᴜʀ PM ᴏʀ Gʀᴏᴜᴘ.
 
-<b>📂 Used Storage:</b> <code>{}</code>
-<b>🗂 Free Storage:</b> <code>{}</code>
-<b>⏰ Uptime:</b> <code>{}</code>"""
+✨ <b><u>Mʏ Fᴇᴀᴛᴜʀᴇs:</u></b>
+🚀 <b>Fᴀsᴛ Sᴇᴀʀᴄʜ:</b> Get files in milliseconds.
+🛡️ <b>Sᴇᴄᴜʀᴇ:</b> No Ads & Direct Links (Premium).
+🎥 <b>Sᴛʀᴇᴀᴍɪɴɢ:</b> Watch Online without downloading.
+📂 <b>Sᴍᴀʀᴛ Iɴᴅᴇx:</b> Auto-index channels support.
 
-    NEW_GROUP_TXT = """#NewGroup<br>Title - {}<br>ID - <code>{}</code><br>Username - {}<br>Total - <code>{}</code>"""
-    NEW_USER_TXT = """#NewUser<br>★ Name: {}<br>★ ID: <code>{}</code>"""
-    NOT_FILE_TXT = """👋 Hello {},<br><br>I can't find the <b>{}</b> in my database! 🥲"""
-    
-    # Variables required by info.py (Do not remove these names, just keep values simple)
-    IMDB_TEMPLATE = """✅ I Found: <code>{query}</code><br><br>🏷 Title: <a href={url}>{title}</a>"""
-    FILE_CAPTION = """<b>📂 {file_name}</b><br><b>♻️ Size: {file_size}</b><br><b>⚡ Powered By:- @YourXCloud</b>"""
-    WELCOME_TEXT = """👋 Hello {mention}, Welcome to {title} group! 💞"""
+<i>👇 Cʟɪᴄᴋ ᴛʜᴇ ʙᴜᴛᴛᴏɴs ʙᴇʟᴏᴡ ᴛᴏ ᴋɴᴏᴡ ᴍᴏʀᴇ!</i>"""
 
-    HELP_TXT = """👋 Hello {},<br>    <br>I can filter movie and series you want.<br>Just type the name in PM or Group.<br><br><b>Click buttons below for command list.</b>"""
+    # --- 📊 STATUS DASHBOARD ---
+    # Used in: commands.py (stats)
+    STATUS_TXT = """<b>📊 <u>Sʏsᴛᴇᴍ Sᴛᴀᴛɪsᴛɪᴄs</u></b>
 
-    ADMIN_COMMAND_TXT = """<b>👮‍♂️ Admin Commands:</b>
+<b>📂 Tᴏᴛᴀʟ Fɪʟᴇs:</b> <code>{}</code>
+<b>👤 Tᴏᴛᴀʟ Usᴇʀs:</b> <code>{}</code>
+<b>🏘️ Tᴏᴛᴀʟ Gʀᴏᴜᴘs:</b> <code>{}</code>
+<b>💎 Pʀᴇᴍɪᴜᴍ Usᴇʀs:</b> <code>{}</code>
 
-<b>🗂 Indexing:</b>
-• /index_channels - List Index Channels
-• /add_channel - Add Index Channel
-• /remove_channel - Remove Index Channel
-• /delete - Delete specific file
-• /delete_all - Delete ALL files
+<b>💾 Sᴛᴏʀᴀɢᴇ:</b> <code>{} / {}</code>
+<b>⚡ Uᴘᴛɪᴍᴇ:</b> <code>{}</code>"""
 
-<b>📢 Force Subscribe:</b>
-• /add_fsub - Add F-Sub Channel
-• /del_fsub - Remove F-Sub
-• /view_fsub - View Settings
+    # --- ⚙️ HELP MENU ---
+    # Used in: pm_filter.py (help callback)
+    HELP_TXT = """<b>⚙️ <u>Hᴇʟᴘ Mᴇɴᴜ</u></b>
 
-<b>👥 User & Chat Management:</b>
-• /users - List all users
-• /chats - List all groups
-• /ban_user - Ban a user
-• /unban_user - Unban a user
-• /ban_grp - Disable Group
-• /unban_grp - Enable Group
-• /leave - Leave a group
+Hᴇʀᴇ ʏᴏᴜ ᴄᴀɴ ғɪɴᴅ ᴀʟʟ ᴛʜᴇ ᴄᴏᴍᴍᴀɴᴅs ᴀɴᴅ ɪɴsᴛʀᴜᴄᴛɪᴏɴs ᴛᴏ ᴜsᴇ ᴍᴇ.
 
-<b>💎 Premium:</b>
-• /add_prm - Add Premium
-• /rm_prm - Remove Premium
-• /prm_list - List Premium Users
+👤 <b>Usᴇʀs:</b> Learn how to search & download.
+🦹 <b>Aᴅᴍɪɴs:</b> Learn how to manage groups & files.
 
-<b>⚙️ Bot Settings:</b>
-• /stats - Check Bot Status
-• /broadcast - Broadcast Message
-• /restart - Restart the bot
-• /on_auto_filter - Enable Auto Filter
-• /off_auto_filter - Disable Auto Filter
-• /on_pm_search - Enable PM Search
-• /off_pm_search - Disable PM Search"""
-    
-    PLAN_TXT = """<b>💎 Premium Plans</b>\n\nActivate premium to get exclusive features like:\n• Ad-free experience\n• Direct Links\n• Fast Download\n\n<b>💰 Price:</b> INR {} per day\n\n<b>UPI ID:</b> <code>{}</code>"""
+<i>👇 Cʜᴏᴏsᴇ ᴀ ᴄᴀᴛᴇɢᴏʀʏ ʙᴇʟᴏᴡ:</i>"""
 
-    USER_COMMAND_TXT = """<b>👤 User Commands:</b>
+    # --- 👤 USER COMMANDS ---
+    USER_COMMAND_TXT = """<b>👤 <u>Usᴇʀ Cᴏᴍᴍᴀɴᴅs</u></b>
 
-• /start - Check bot alive
-• /myplan - Check your premium status
-• /plan - Activate new plan
-• /id - Get Telegram ID
-• /img_2_link - Convert Image to Link
-• /settings - Change Group Settings (Admins only)"""
+🔹 <code>/start</code> - Check if I am alive.
+🔹 <code>/link</code> - Get Stream/Download Link (Reply to file).
+🔹 <code>/plan</code> - Check Premium Plans.
+🔹 <code>/myplan</code> - Check your current status.
+🔹 <code>/id</code> - Get your Telegram ID.
+🔹 <code>/info</code> - Get User Information.
+🔹 <code>/img_2_link</code> - Create Link from Image.
+
+<b>🔍 Hᴏᴡ ᴛᴏ Sᴇᴀʀᴄʜ?</b>
+Just type the <b>Movie or Series Name</b> in the Group or PM, and I will send the files."""
+
+    # --- 🦹 ADMIN COMMANDS ---
+    ADMIN_COMMAND_TXT = """<b>🦹 <u>Aᴅᴍɪɴ Cᴏᴍᴍᴀɴᴅs</u></b>
+
+<b>🗂️ Iɴᴅᴇxɪɴɢ Oᴘᴇʀᴀᴛɪᴏɴs:</b>
+🔹 <code>/index_channels</code> - List indexed channels.
+🔹 <code>/add_channel [ID]</code> - Add a channel for indexing.
+🔹 <code>/remove_channel [ID]</code> - Remove a channel.
+🔹 <code>/delete [Query]</code> - Delete specific files from DB.
+🔹 <code>/delete_all</code> - Delete ALL files (Reset DB).
+
+<b>📢 Bʀᴏᴀᴅᴄᴀsᴛ & F-Sᴜʙ:</b>
+🔹 <code>/broadcast</code> - Send message to all users/groups.
+🔹 <code>/add_fsub [ID]</code> - Set Force Subscribe Channel.
+🔹 <code>/del_fsub</code> - Remove Force Subscribe.
+🔹 <code>/view_fsub</code> - Check F-Sub Settings.
+
+<b>👥 Mᴏᴅᴇʀᴀᴛɪᴏɴ:</b>
+🔹 <code>/users</code> - List all users in DB.
+🔹 <code>/chats</code> - List all groups in DB.
+🔹 <code>/ban_user [ID]</code> - Ban a user from bot.
+🔹 <code>/unban_user [ID]</code> - Unban a user.
+🔹 <code>/ban_grp [ID]</code> - Disable bot in a group.
+🔹 <code>/leave [ID]</code> - Force leave a group.
+
+<b>💎 Pʀᴇᴍɪᴜᴍ Mᴀɴᴀɢᴇᴍᴇɴᴛ:</b>
+🔹 <code>/add_prm [ID] [Days]</code> - Give Premium manually.
+🔹 <code>/rm_prm [ID]</code> - Remove Premium.
+🔹 <code>/prm_list</code> - List all Premium users.
+
+<b>⚙️ Sʏsᴛᴇᴍ:</b>
+🔹 <code>/stats</code> - Check Bot Statistics.
+🔹 <code>/restart</code> - Restart the bot server.
+🔹 <code>/eval</code> - Execute Python Code."""
+
+    # --- 💎 PREMIUM PLAN ---
+    # Used in: commands.py (plan)
+    PLAN_TXT = """<b>💎 <u>Pʀᴇᴍɪᴜᴍ Uᴘɢʀᴀᴅᴇ</u></b>
+
+<i>Uɴʟᴏᴄᴋ ᴛʜᴇ ғᴜʟʟ ᴘᴏᴛᴇɴᴛɪᴀʟ ᴏғ Fᴀsᴛ Fɪɴᴅᴇʀ!</i> 🚀
+
+✅ <b>Nᴏ Aᴅs & Cᴀᴘᴛᴄʜᴀ</b>
+✅ <b>Dɪʀᴇᴄᴛ Dᴏᴡɴʟᴏᴀᴅ Lɪɴᴋs</b>
+✅ <b>Hɪɢʜ Sᴘᴇᴇᴅ Sᴛʀᴇᴀᴍɪɴɢ</b>
+✅ <b>Pʀɪᴏʀɪᴛʏ Sᴜᴘᴘᴏʀᴛ</b>
+
+💰 <b>Pʀɪᴄᴇ:</b> ₹{} / Dᴀʏ
+<i>(Contact Admin for Custom Plans)</i>
+
+<b>🛍️ Hᴏᴡ ᴛᴏ Bᴜʏ?</b>
+1️⃣ Click the button below.
+2️⃣ Enter the number of days.
+3️⃣ Pay via UPI QR Code.
+4️⃣ Send the screenshot to <b>{}</b>."""
+
+    # --- 📝 LOG MESSAGES ---
+    NEW_USER_TXT = """<b>#New_User_Started 👤</b>
+
+<b>🙋🏻‍♀️ Nᴀᴍᴇ:</b> {}
+<b>🆔 ID:</b> <code>{}</code>
+<b>📅 Dᴀᴛᴇ:</b> <i>Today</i>"""
+
+    NEW_GROUP_TXT = """<b>#New_Group_Added 🏘️</b>
+
+<b>🏷️ Tɪᴛʟᴇ:</b> {}
+<b>🆔 ID:</b> <code>{}</code>
+<b>🔗 Usᴇʀɴᴀᴍᴇ:</b> {}
+<b>👥 Tᴏᴛᴀʟ Mᴇᴍʙᴇʀs:</b> <code>{}</code>"""
+
+    # --- ⚠️ LEGACY VARIABLES (Required to prevent errors) ---
+    NOT_FILE_TXT = """👋 Hᴇʟʟᴏ {},<br><br>I ᴄᴀɴ'ᴛ ғɪɴᴅ <b>{}</b> ɪɴ ᴍʏ ᴅᴀᴛᴀʙᴀsᴇ! 🥲"""
+    IMDB_TEMPLATE = """✅ I Fᴏᴜɴᴅ: <code>{query}</code>""" # Minimal fallback
+    FILE_CAPTION = """<b>📂 {file_name}</b>\n<b>💾 Sɪᴢᴇ: {file_size}</b>"""
+    WELCOME_TEXT = """<b>👋 Hᴇʟʟᴏ {mention}, Wᴇʟᴄᴏᴍᴇ ᴛᴏ {title}!</b>"""
