@@ -88,10 +88,10 @@ PORT = int(environ.get('PORT', '8080'))
 # ==============================================================================
 
 IS_PREMIUM = is_enabled('IS_PREMIUM', True)
-PRE_DAY_AMOUNT = int(environ.get('PRE_DAY_AMOUNT', '5'))
-UPI_ID = environ.get("UPI_ID", "YourX@SBI")
+PRE_DAY_AMOUNT = int(environ.get('PRE_DAY_AMOUNT', '10'))
+UPI_ID = environ.get("UPI_ID", "")
 UPI_NAME = environ.get("UPI_NAME", "FastFinder Payment")
-RECEIPT_SEND_USERNAME = environ.get("RECEIPT_SEND_USERNAME", "@JoneySinx")
+RECEIPT_SEND_USERNAME = environ.get("RECEIPT_SEND_USERNAME", "")
 
 # Safety Check for Premium
 if IS_PREMIUM and (not UPI_ID or not RECEIPT_SEND_USERNAME):
@@ -140,10 +140,9 @@ LANGUAGES = [l.lower() for l in environ.get('LANGUAGES', 'hindi english telugu t
 QUALITY = [q.lower() for q in environ.get('QUALITY', '360p 480p 720p 1080p 1440p 2160p 4k').split()]
 
 # ==============================================================================
-# 🗑️ LEGACY / DISABLED FEATURES (Placeholders to prevent errors)
+# 🗑️ LEGACY / DISABLED FEATURES (Placeholders)
 # ==============================================================================
 
-# These are kept for backward compatibility with Database structure but are forcefully disabled.
 IMDB = False
 SHORTLINK = False
 SHORTLINK_URL = ""
@@ -153,12 +152,12 @@ VERIFY_TUTORIAL = ""
 VERIFY_EXPIRE = 0
 LONG_IMDB_DESCRIPTION = False
 
-# Templates (Imported from Script to keep logic central)
 IMDB_TEMPLATE = environ.get("IMDB_TEMPLATE", script.IMDB_TEMPLATE)
 FILE_CAPTION = environ.get("FILE_CAPTION", script.FILE_CAPTION)
 WELCOME_TEXT = environ.get("WELCOME_TEXT", script.WELCOME_TEXT)
 
-# Optional IDs
-SUPPORT_GROUP = int(environ.get('SUPPORT_GROUP', '0'))
+# 🔥 FIX: Handle Multiple Support Groups (List Support)
+SUPPORT_GROUP = [int(x) for x in environ.get('SUPPORT_GROUP', '').split() if x.lstrip('-').isdigit()]
+
 AUTH_CHANNEL = int(environ.get('AUTH_CHANNEL', '0'))
 DB_CHANNEL = int(environ.get('DB_CHANNEL', '0'))
