@@ -53,18 +53,15 @@ async def pm_search(client, message):
 # --- 🏘️ GROUP SEARCH HANDLER ---
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def group_search(client, message):
-    # 🛑 SUPPORT GROUP CHECK (List Support) 🛑
-    # 🔥 CHANGE: Check if chat ID is IN the list
-    if message.chat.id in SUPPORT_GROUP:
-        # Auto Delete Links after 5 Minutes
+    # 🛑 SUPPORT GROUP CHECK 🛑
+    if message.chat.id == SUPPORT_GROUP:
         if re.findall(r'https?://\S+|www\.\S+|t\.me/\S+', message.text):
             async def delete_link():
-                await asyncio.sleep(300) # 5 Minutes
+                await asyncio.sleep(300) # 5 Minutes Wait
                 try: await message.delete()
                 except: pass
-            
             asyncio.create_task(delete_link())
-        return # Ignore Search
+        return
 
     user_id = message.from_user.id if message.from_user else 0
     
@@ -449,13 +446,30 @@ async def cb_handler(client: Client, query: CallbackQuery):
         await query.answer(url=f"https://t.me/{temp.U_NAME}?start={mc}")
         await query.message.delete()
     
+    # --- 🔥 FIXED DELETE HANDLERS ---
     elif query.data == "delete_all":
-        await query.message.edit("<b>🗑️ Dᴇʟᴇᴛɪɴɢ Aʟʟ Fɪʟᴇs...</b>\n<i>This may take a while.</i>")
+        try:
+            await query.message.edit("<b>🗑️ Dᴇʟᴇᴛɪɴɢ Aʟʟ Fɪʟᴇs...</b>\n<i>This may take a while.</i>")
+        except MessageNotModified:
+            pass # Already edited
+            
         total = await delete_files("") 
-        await query.message.edit(f"<b>✅ Dᴇʟᴇᴛᴇᴅ {total} Fɪʟᴇs ғʀᴏᴍ Dᴀᴛᴀʙᴀsᴇ.</b>")
+        
+        try:
+            await query.message.edit(f"<b>✅ Dᴇʟᴇᴛᴇᴅ {total} Fɪʟᴇs ғʀᴏᴍ Dᴀᴛᴀʙᴀsᴇ.</b>")
+        except MessageNotModified:
+            pass
 
     elif query.data.startswith("delete_"):
         _, query_ = query.data.split("_", 1)
-        await query.message.edit(f"<b>🗑️ Dᴇʟᴇᴛɪɴɢ Fɪʟᴇs Mᴀᴛᴄʜɪɴɢ:</b> <code>{query_}</code>...")
+        try:
+            await query.message.edit(f"<b>🗑️ Dᴇʟᴇᴛɪɴɢ Fɪʟᴇs Mᴀᴛᴄʜɪɴɢ:</b> <code>{query_}</code>...")
+        except MessageNotModified:
+            pass
+            
         total = await delete_files(query_)
-        await query.message.edit(f"<b>✅ Dᴇʟᴇᴛᴇᴅ {total} Fɪʟᴇs Mᴀᴛᴄʜɪɴɢ '{query_}'</b>")
+        
+        try:
+            await query.message.edit(f"<b>✅ Dᴇʟᴇᴛᴇᴅ {total} Fɪʟᴇs Mᴀᴛᴄʜɪɴɢ '{query_}'</b>")
+        except MessageNotModified:
+            pass
