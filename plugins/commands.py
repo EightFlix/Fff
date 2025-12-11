@@ -27,6 +27,8 @@ from utils import (
 logger = logging.getLogger(__name__)
 TIME_FMT = "%d/%m/%Y %I:%M %p"
 
+# --- HELPER FUNCTIONS ---
+
 async def get_grp_stg(group_id):
     settings = await get_settings(group_id)
     btn = [[
@@ -44,8 +46,11 @@ async def get_grp_stg(group_id):
     ]]
     return btn
 
+# --- START COMMAND ---
+
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
+    # 1. Group Handling
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
         if not await db.get_chat(message.chat.id):
             total = await client.get_chat_members_count(message.chat.id)
@@ -54,18 +59,27 @@ async def start(client, message):
             await db.add_chat(message.chat.id, message.chat.title)
         
         wish = get_wish()
+        # Safe mention check for groups
         user = message.from_user.mention if message.from_user else "Friend"
+        
         btn = [[InlineKeyboardButton('⚡️ Jᴏɪɴ Uᴘᴅᴀᴛᴇs', url=UPDATES_LINK)]]
         await message.reply(text=f"<b>👋 Hᴇʏ {user}, {wish}\n\nI'ᴍ Rᴇᴀᴅʏ Tᴏ Hᴇʟᴘ ɪɴ ᴛʜɪs Gʀᴏᴜᴘ! 🚀</b>", reply_markup=InlineKeyboardMarkup(btn))
         return 
         
+    # 2. React (Safe)
     try: await message.react(emoji=random.choice(REACTIONS), big=True)
     except: pass
 
+    # 🔥 CRITICAL FIX: Check if User exists (Prevents Crash in Channels)
+    if not message.from_user:
+        return
+
+    # 3. User Registration
     if not await db.is_user_exist(message.from_user.id):
         await db.add_user(message.from_user.id, message.from_user.first_name)
         await client.send_message(LOG_CHANNEL, script.NEW_USER_TXT.format(message.from_user.mention, message.from_user.id))
 
+    # 4. Normal Start Message
     if (len(message.command) != 2) or (len(message.command) == 2 and message.command[1] == 'start'):
         buttons = [
             [InlineKeyboardButton('👨‍🚒 Hᴇʟᴘ', callback_data='help'), InlineKeyboardButton('📊 Sᴛᴀᴛs', callback_data='stats')], 
@@ -77,18 +91,21 @@ async def start(client, message):
     mc = message.command[1]
     if mc == 'premium': return await plan(client, message)
     
+    # 5. Settings Menu
     if mc.startswith('settings'):
         _, group_id = message.command[1].split("_")
         if not await is_check_admin(client, int(group_id), message.from_user.id): return await message.reply("<b>❌ Aᴄᴄᴇss Dᴇɴɪᴇᴅ! Yᴏᴜ ᴀʀᴇ ɴᴏᴛ ᴀɴ Aᴅᴍɪɴ.</b>")
         btn = await get_grp_stg(int(group_id))
         return await message.reply(f"<b>⚙️ Sᴇᴛᴛɪɴɢs Mᴇɴᴜ ғᴏʀ:</b> <code>{group_id}</code>", reply_markup=InlineKeyboardMarkup(btn))
 
+    # 6. Subscription Check
     btn = await is_subscribed(client, message)
     if btn:
         btn.append([InlineKeyboardButton("🔁 Tʀʏ Aɢᴀɪɴ", callback_data=f"checksub#{mc}")])
         await message.reply_photo(photo=random.choice(PICS), caption=f"<b>👋 Hᴇʟʟᴏ {message.from_user.mention},</b>\n\n<i>Pʟᴇᴀsᴇ Jᴏɪɴ Mʏ Uᴘᴅᴀᴛᴇ Cʜᴀɴɴᴇʟ Tᴏ Usᴇ Mᴇ!</i>", reply_markup=InlineKeyboardMarkup(btn))
         return 
         
+    # 7. "Get All" Files Handler
     if mc.startswith('all'):
         try: _, grp_id, key = mc.split("_", 2)
         except ValueError: return await message.reply("❌ Invalid Link")
@@ -103,8 +120,7 @@ async def start(client, message):
         
         for file in files:
             CAPTION = settings['caption']
-            f_name = file['file_name'].title().replace(" L ", " l ")
-            f_caption = CAPTION.format(file_name=f_name, file_size=get_size(file['file_size']), file_caption=file['caption'])      
+            f_caption = CAPTION.format(file_name=file['file_name'].title(), file_size=get_size(file['file_size']), file_caption=file['caption'])      
             btn = [[InlineKeyboardButton('❌ Cʟᴏsᴇ', callback_data='close_data')]]
             if IS_STREAM:
                 btn.insert(0, [InlineKeyboardButton("🚀 Fᴀsᴛ Dᴏᴡɴʟᴏᴀᴅ / Wᴀᴛᴄʜ", callback_data=f"stream#{file['_id']}")])
@@ -136,7 +152,7 @@ async def start(client, message):
         except: pass
         return
 
-    # --- SINGLE FILE HANDLER ---
+    # 8. Single File Handler
     try: type_, grp_id, file_id = mc.split("_", 2)
     except ValueError: return await message.reply("❌ Invalid Link")
     
@@ -185,6 +201,8 @@ async def start(client, message):
     try: await gone_msg.delete()
     except: pass
 
+# --- ADMIN COMMANDS ---
+
 @Client.on_message(filters.command('delete') & filters.user(ADMINS))
 async def delete_file(bot, message):
     try: query = message.text.split(" ", 1)[1]
@@ -200,6 +218,7 @@ async def delete_all_index(bot, message):
 @Client.on_message(filters.command('stats'))
 async def stats(bot, message):
     if message.from_user.id not in ADMINS: return await message.delete()
+    
     files = await db_count_documents()
     users = await db.total_users_count()
     chats = await db.total_chat_count()
@@ -293,6 +312,8 @@ async def ping(client, message):
     msg = await message.reply("🏓")
     end_time = monotonic()
     await msg.edit(f'<b>🏓 Pᴏɴɢ!</b> <code>{round((end_time - start_time) * 1000)} ms</code>')
+
+# --- PREMIUM COMMANDS ---
 
 @Client.on_message(filters.command('plan') & filters.private)
 async def plan(client, message):
@@ -389,6 +410,8 @@ async def prm_list(bot, message):
             await message.reply_document('premium_users.txt', caption="💎 Premium Users List")
             os.remove('premium_users.txt')
             await tx.delete()
+
+# --- MODERATION COMMANDS ---
 
 @Client.on_message(filters.command('ban') & filters.group)
 async def ban_chat_user(client, message):
