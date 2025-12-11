@@ -18,8 +18,7 @@ collection = db[COLLECTION_NAME]
 RE_SPECIAL = re.compile(r"[\.\+\-_]")
 RE_USERNAMES = re.compile(r"@\w+")
 RE_BRACKETS = re.compile(r"[\[\(\{].*?[\]\}\)]")
-# Extensions Regex (Case Insensitive)
-RE_EXTENSIONS = re.compile(r"\b(mkv|mp4|avi|m4v|webm|flv|mov|wmv|3gp|mpg|mpeg|hevc)\b", flags=re.IGNORECASE)
+RE_EXTENSIONS = re.compile(r"\b(mkv|mp4|avi|m4v|webm|flv)\b", flags=re.IGNORECASE)
 RE_SPACES = re.compile(r"\s+")
 
 async def create_text_index():
@@ -28,26 +27,18 @@ async def create_text_index():
     except Exception as e:
         logger.warning(f"Index Error: {e}")
 
-# --- SAVE FILE (INSERT) ---
+# --- SAVE FILE ---
 async def save_file(media):
     file_id = unpack_new_file_id(media.file_id)
     
-    # 1. Get Original Name
+    # Cleaning Logic
     original_name = str(media.file_name or "")
+    clean_name = RE_SPECIAL.sub(" ", original_name)
+    clean_name = RE_USERNAMES.sub("", clean_name)
+    clean_name = RE_BRACKETS.sub("", clean_name)
+    clean_name = RE_SPACES.sub(" ", clean_name)
+    file_name = clean_name.strip().title()
     
-    # 2. Apply Cleaning
-    clean_name = RE_SPECIAL.sub(" ", original_name)   # Remove dots/underscores
-    clean_name = RE_USERNAMES.sub("", clean_name)     # Remove usernames
-    clean_name = RE_BRACKETS.sub("", clean_name)      # Remove [...]
-    clean_name = RE_EXTENSIONS.sub("", clean_name)    # 🔥 Remove mp4/mkv
-    clean_name = RE_SPACES.sub(" ", clean_name)       # Remove extra spaces
-    
-    # 3. Format: Title Case + " l " Fix
-    # .title() makes "iron man" -> "Iron Man" but also " l " -> " L "
-    # We replace " L " back to " l "
-    file_name = clean_name.strip().title().replace(" L ", " l ")
-
-    # 4. Clean Caption (Optional: Keep original or clean it too)
     original_caption = str(media.caption or "")
     clean_caption = RE_SPECIAL.sub(" ", original_caption)
     clean_caption = RE_USERNAMES.sub("", clean_caption)
@@ -75,20 +66,16 @@ async def save_file(media):
         logger.error(f"❌ Error Saving: {e}")
         return 'err'
 
-# --- UPDATE FILE (EDIT) ---
+# --- UPDATE FILE ---
 async def update_file(media):
     file_id = unpack_new_file_id(media.file_id)
     
-    # Same Cleaning Logic as save_file
     original_name = str(media.file_name or "")
     clean_name = RE_SPECIAL.sub(" ", original_name)
     clean_name = RE_USERNAMES.sub("", clean_name)
     clean_name = RE_BRACKETS.sub("", clean_name)
-    clean_name = RE_EXTENSIONS.sub("", clean_name)    # 🔥 Remove mp4/mkv
     clean_name = RE_SPACES.sub(" ", clean_name)
-    
-    # Format: Title Case + " l " Fix
-    file_name = clean_name.strip().title().replace(" L ", " l ")
+    file_name = clean_name.strip().title()
     
     original_caption = str(media.caption or "")
     clean_caption = RE_SPECIAL.sub(" ", original_caption)
@@ -113,6 +100,7 @@ async def update_file(media):
         logger.error(f"❌ Error Updating: {e}")
         return 'err'
 
+# --- SEARCH LOGIC ---
 async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None):
     query = str(query).strip().lower()
     query = RE_SPECIAL.sub(" ", query)
@@ -222,10 +210,26 @@ def unpack_new_file_id(new_file_id):
 async def db_count_documents():
      return await collection.count_documents({})
 
+# --- 🔥 FIXED DELETE FILES LOGIC ---
 async def delete_files(query):
-    query = query.strip()
-    if not query: return 0
+    # अगर क्वेरी खाली है (Delete All Command), तो सारा डेटा साफ़ कर दें
+    if query is None or str(query).strip() == "":
+        try:
+            result = await collection.delete_many({})
+            logger.info(f"🗑️ DELETED ALL FILES: {result.deleted_count}")
+            return result.deleted_count
+        except Exception as e:
+            logger.error(f"Delete All Error: {e}")
+            return 0
+
+    # अगर क्वेरी दी गई है, तो सिर्फ उसे डिलीट करें
+    query = str(query).strip()
     filter = {'file_name': {'$regex': query, '$options': 'i'}}
-    result1 = await collection.delete_many(filter)
-    logger.info(f"🗑️ Deleted {result1.deleted_count} files for query: {query}")
-    return result1.deleted_count
+    
+    try:
+        result = await collection.delete_many(filter)
+        logger.info(f"🗑️ Deleted {result.deleted_count} files for query: {query}")
+        return result.deleted_count
+    except Exception as e:
+        logger.error(f"Delete Specific Error: {e}")
+        return 0
