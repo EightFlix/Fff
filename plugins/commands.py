@@ -27,8 +27,6 @@ from utils import (
 logger = logging.getLogger(__name__)
 TIME_FMT = "%d/%m/%Y %I:%M %p"
 
-# --- HELPER FUNCTIONS ---
-
 async def get_grp_stg(group_id):
     settings = await get_settings(group_id)
     btn = [[
@@ -46,8 +44,6 @@ async def get_grp_stg(group_id):
     ]]
     return btn
 
-# --- START COMMAND ---
-
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
@@ -59,7 +55,6 @@ async def start(client, message):
         
         wish = get_wish()
         user = message.from_user.mention if message.from_user else "Friend"
-        
         btn = [[InlineKeyboardButton('⚡️ Jᴏɪɴ Uᴘᴅᴀᴛᴇs', url=UPDATES_LINK)]]
         await message.reply(text=f"<b>👋 Hᴇʏ {user}, {wish}\n\nI'ᴍ Rᴇᴀᴅʏ Tᴏ Hᴇʟᴘ ɪɴ ᴛʜɪs Gʀᴏᴜᴘ! 🚀</b>", reply_markup=InlineKeyboardMarkup(btn))
         return 
@@ -108,8 +103,8 @@ async def start(client, message):
         
         for file in files:
             CAPTION = settings['caption']
-            # TITLE CASE FIX: .title() added
-            f_caption = CAPTION.format(file_name=file['file_name'].title(), file_size=get_size(file['file_size']), file_caption=file['caption'])      
+            f_name = file['file_name'].title().replace(" L ", " l ")
+            f_caption = CAPTION.format(file_name=f_name, file_size=get_size(file['file_size']), file_caption=file['caption'])      
             btn = [[InlineKeyboardButton('❌ Cʟᴏsᴇ', callback_data='close_data')]]
             if IS_STREAM:
                 btn.insert(0, [InlineKeyboardButton("🚀 Fᴀsᴛ Dᴏᴡɴʟᴏᴀᴅ / Wᴀᴛᴄʜ", callback_data=f"stream#{file['_id']}")])
@@ -151,10 +146,9 @@ async def start(client, message):
         
     settings = await get_settings(int(grp_id))
     CAPTION = settings['caption']
-    # TITLE CASE FIX: .title() added
-    f_caption = CAPTION.format(file_name = files_['file_name'].title(), file_size = get_size(files_['file_size']), file_caption=files_['caption'])
+    f_name = files_['file_name'].title().replace(" L ", " l ")
+    f_caption = CAPTION.format(file_name=f_name, file_size=get_size(files_['file_size']), file_caption=files_['caption'])
     
-    # 1. Initial Send (Normal Buttons)
     btn = [[InlineKeyboardButton('❌ Cʟᴏsᴇ', callback_data='close_data')]]
     if IS_STREAM:
         btn.insert(0, [InlineKeyboardButton("🚀 Fᴀsᴛ Dᴏᴡɴʟᴏᴀᴅ / Wᴀᴛᴄʜ", callback_data=f"stream#{file_id}")])
@@ -167,22 +161,17 @@ async def start(client, message):
         reply_markup=InlineKeyboardMarkup(btn)
     )
     
-    # 2. Send Warning Message
     time = get_readable_time(PM_FILE_DELETE_TIME)
     msg = await vp.reply(f"<b>⚠️ Nᴏᴛᴇ:</b> <i>Tʜɪs ғɪʟᴇ ᴡɪʟʟ ʙᴇ ᴅᴇʟᴇᴛᴇᴅ ɪɴ {time}.</i>")
 
-    # 3. 🔥 UPDATE BUTTON TO INCLUDE WARNING ID
-    # This allows pm_filter.py to delete the warning message when Close is clicked
     new_btn = [[InlineKeyboardButton('❌ Cʟᴏsᴇ', callback_data=f'close_data#{msg.id}')]]
     if IS_STREAM:
         new_btn.insert(0, [InlineKeyboardButton("🚀 Fᴀsᴛ Dᴏᴡɴʟᴏᴀᴅ / Wᴀᴛᴄʜ", callback_data=f"stream#{file_id}")])
     
     try:
         await vp.edit_reply_markup(reply_markup=InlineKeyboardMarkup(new_btn))
-    except:
-        pass # Ignore if edit fails (e.g., user blocked bot immediately)
+    except: pass
 
-    # 4. Timer Logic
     await asyncio.sleep(PM_FILE_DELETE_TIME)
     try:
         await msg.delete()
@@ -195,8 +184,6 @@ async def start(client, message):
     await asyncio.sleep(43200)
     try: await gone_msg.delete()
     except: pass
-
-# --- ADMIN COMMANDS ---
 
 @Client.on_message(filters.command('delete') & filters.user(ADMINS))
 async def delete_file(bot, message):
@@ -213,7 +200,6 @@ async def delete_all_index(bot, message):
 @Client.on_message(filters.command('stats'))
 async def stats(bot, message):
     if message.from_user.id not in ADMINS: return await message.delete()
-    
     files = await db_count_documents()
     users = await db.total_users_count()
     chats = await db.total_chat_count()
@@ -246,7 +232,8 @@ async def link(bot, message):
         watch = f"{base_url}/watch/{msg.id}"
         download = f"{base_url}/download/{msg.id}"
         btn=[[InlineKeyboardButton("🎬 Wᴀᴛᴄʜ Oɴʟɪɴᴇ", url=watch), InlineKeyboardButton("⚡ Dᴏᴡɴʟᴏᴀᴅ", url=download)],[InlineKeyboardButton('❌ Cʟᴏsᴇ', callback_data='close_data')]]
-        await message.reply(f'<b>🔗 Fɪʟᴇ Lɪɴᴋ Gᴇɴᴇʀᴀᴛᴇᴅ!</b>\n\n<b>📂 Nᴀᴍᴇ:</b> {media.file_name.title()}', reply_markup=InlineKeyboardMarkup(btn))
+        f_name = media.file_name.title().replace(" L ", " l ")
+        await message.reply(f'<b>🔗 Fɪʟᴇ Lɪɴᴋ Gᴇɴᴇʀᴀᴛᴇᴅ!</b>\n\n<b>📂 Nᴀᴍᴇ:</b> {f_name}', reply_markup=InlineKeyboardMarkup(btn))
     except Exception as e: await message.reply(f'Error: {e}')
 
 @Client.on_message(filters.command('index_channels'))
@@ -306,8 +293,6 @@ async def ping(client, message):
     msg = await message.reply("🏓")
     end_time = monotonic()
     await msg.edit(f'<b>🏓 Pᴏɴɢ!</b> <code>{round((end_time - start_time) * 1000)} ms</code>')
-
-# --- PREMIUM COMMANDS ---
 
 @Client.on_message(filters.command('plan') & filters.private)
 async def plan(client, message):
@@ -404,8 +389,6 @@ async def prm_list(bot, message):
             await message.reply_document('premium_users.txt', caption="💎 Premium Users List")
             os.remove('premium_users.txt')
             await tx.delete()
-
-# --- MODERATION COMMANDS ---
 
 @Client.on_message(filters.command('ban') & filters.group)
 async def ban_chat_user(client, message):
