@@ -15,41 +15,40 @@ client = AsyncIOMotorClient(DATA_DATABASE_URL)
 db = client[DATABASE_NAME]
 collection = db[COLLECTION_NAME]
 
+# --- ⚡ COMPILED REGEX PATTERNS (For High Performance) ---
+RE_SPECIAL = re.compile(r"[\.\+\-_]")
+RE_USERNAMES = re.compile(r"@\w+")
+RE_BRACKETS = re.compile(r"[\[\(\{].*?[\]\}\)]")
+RE_EXTENSIONS = re.compile(r"\b(mkv|mp4|avi|m4v|webm|flv)\b", flags=re.IGNORECASE)
+RE_SPACES = re.compile(r"\s+")
+
 async def save_file(media):
     """
-    Save file using standard logic (Cleaning Filename Only).
-    NO Smart Caption Logic here.
+    Save file with Optimized Cleaning & Emoji Logging.
     """
     file_id = unpack_new_file_id(media.file_id)
     
     # --- FILENAME CLEANING ---
     original_name = str(media.file_name or "")
     
-    # 1. Replace dots, underscores, hyphens with space
-    clean_name = re.sub(r"[\.\+\-_]", " ", original_name)
+    # Apply Compiled Regex (Faster)
+    clean_name = RE_SPECIAL.sub(" ", original_name)
+    clean_name = RE_USERNAMES.sub("", clean_name)
+    clean_name = RE_BRACKETS.sub("", clean_name)
+    clean_name = RE_EXTENSIONS.sub("", clean_name)
+    clean_name = RE_SPACES.sub(" ", clean_name)
     
-    # 2. Remove @usernames
-    clean_name = re.sub(r"@\w+", "", clean_name)
-    
-    # 3. Remove content inside brackets: [720p], (2024), {Dual}
-    clean_name = re.sub(r"[\[\(\{].*?[\]\}\)]", "", clean_name)
-    
-    # 4. Remove file extensions
-    clean_name = re.sub(r"\b(mkv|mp4|avi|m4v|webm|flv)\b", "", clean_name, flags=re.IGNORECASE)
-    
-    # 5. Collapse multiple spaces into one
-    clean_name = re.sub(r"\s+", " ", clean_name)
-    
-    # 6. Final cleanup
     file_name = clean_name.strip().lower()
     
     # --- CAPTION CLEANING ---
     original_caption = str(media.caption or "")
-    clean_caption = re.sub(r"[\.\+\-_]", " ", original_caption)
-    clean_caption = re.sub(r"@\w+", "", clean_caption)
-    clean_caption = re.sub(r"[\[\(\{].*?[\]\}\)]", "", clean_caption)
-    clean_caption = re.sub(r"\b(mkv|mp4|avi|m4v|webm|flv)\b", "", clean_caption, flags=re.IGNORECASE)
-    clean_caption = re.sub(r"\s+", " ", clean_caption)
+    
+    clean_caption = RE_SPECIAL.sub(" ", original_caption)
+    clean_caption = RE_USERNAMES.sub("", clean_caption)
+    clean_caption = RE_BRACKETS.sub("", clean_caption)
+    clean_caption = RE_EXTENSIONS.sub("", clean_caption)
+    clean_caption = RE_SPACES.sub(" ", clean_caption)
+    
     file_caption = clean_caption.strip().lower()
     
     document = {
@@ -63,23 +62,27 @@ async def save_file(media):
     
     try:
         await collection.insert_one(document)
+        # Advanced Logging
+        logger.info(f"✅ Saved: {file_name[:50]}...") 
         return 'suc'
     except DuplicateKeyError:
+        # logger.info(f"♻️ Duplicate: {file_name[:50]}...") # Uncomment if you want logs for dupes
         return 'dup'
-    except Exception:
+    except Exception as e:
+        logger.error(f"❌ Error Saving: {e}")
         return 'err'
 
 async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None):
     """
-    Hybrid Search Implementation:
+    Hybrid Search:
     Layer 1: MongoDB Text Search (Fast & Accurate)
     Layer 2: Regex Split Search (Smart Fallback + Caption Support)
     """
     
     # Cleaning the query
     query = str(query).strip().lower()
-    query = re.sub(r"[\.\+\-_]", " ", query)
-    query = re.sub(r"\s+", " ", query).strip()
+    query = RE_SPECIAL.sub(" ", query)
+    query = RE_SPACES.sub(" ", query).strip()
 
     if not query:
         return [], "", 0
@@ -134,7 +137,7 @@ async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None):
         return [], "", 0
         
     except Exception as e:
-        logger.error(f"Search Error: {e}")
+        logger.error(f"❌ Search Error: {e}")
         return [], "", 0
 
 async def get_file_details(query):
@@ -181,4 +184,5 @@ async def delete_files(query):
     if not query: return 0
     filter = {'$text': {'$search': query}}
     result1 = await collection.delete_many(filter)
+    logger.info(f"🗑️ Deleted {result1.deleted_count} files for query: {query}")
     return result1.deleted_count
