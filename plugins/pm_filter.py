@@ -54,16 +54,29 @@ async def pm_search(client, message):
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def group_search(client, message):
     # 🛑 SUPPORT GROUP CHECK (No Search + Auto Delete Links) 🛑
-    # 🔥 FIXED: We check if SUPPORT_GROUP is not None/0 before comparison.
-    if SUPPORT_GROUP and message.chat.id == SUPPORT_GROUP:
+    # Debugging: Ensure IDs are Integers for comparison
+    try:
+        current_chat_id = int(message.chat.id)
+        support_chat_id = int(SUPPORT_GROUP) if SUPPORT_GROUP else 0
+    except:
+        current_chat_id = message.chat.id
+        support_chat_id = 0
+
+    # LOGGING (Check your Console to see if IDs match)
+    # logger.info(f"Checking Group: {current_chat_id} vs Support: {support_chat_id}") 
+
+    if support_chat_id != 0 and current_chat_id == support_chat_id:
         # Link Delete Logic (5 Minutes)
         if re.findall(r'https?://\S+|www\.\S+|t\.me/\S+', message.text):
+            # logger.info("🔗 Link Detected in Support Group! Deleting in 5 mins...")
             async def delete_link():
                 await asyncio.sleep(300) # 5 Minutes Wait
                 try: await message.delete()
                 except: pass
             asyncio.create_task(delete_link())
-        return # STOP SEARCH
+        
+        # STOP SEARCH (Return immediately)
+        return
 
     user_id = message.from_user.id if message.from_user else 0
     
@@ -448,29 +461,22 @@ async def cb_handler(client: Client, query: CallbackQuery):
         await query.answer(url=f"https://t.me/{temp.U_NAME}?start={mc}")
         await query.message.delete()
     
+    # --- 🗑️ DELETE HANDLERS ---
     elif query.data == "delete_all":
         try:
             await query.message.edit("<b>🗑️ Dᴇʟᴇᴛɪɴɢ Aʟʟ Fɪʟᴇs...</b>\n<i>This may take a while.</i>")
-        except MessageNotModified:
-            pass
-            
+        except MessageNotModified: pass
         total = await delete_files("") 
-        
         try:
             await query.message.edit(f"<b>✅ Dᴇʟᴇᴛᴇᴅ {total} Fɪʟᴇs ғʀᴏᴍ Dᴀᴛᴀʙᴀsᴇ.</b>")
-        except MessageNotModified:
-            pass
+        except MessageNotModified: pass
 
     elif query.data.startswith("delete_"):
         _, query_ = query.data.split("_", 1)
         try:
             await query.message.edit(f"<b>🗑️ Dᴇʟᴇᴛɪɴɢ Fɪʟᴇs Mᴀᴛᴄʜɪɴɢ:</b> <code>{query_}</code>...")
-        except MessageNotModified:
-            pass
-            
+        except MessageNotModified: pass
         total = await delete_files(query_)
-        
         try:
             await query.message.edit(f"<b>✅ Dᴇʟᴇᴛᴇᴅ {total} Fɪʟᴇs Mᴀᴛᴄʜɪɴɢ '{query_}'</b>")
-        except MessageNotModified:
-            pass
+        except MessageNotModified: pass
