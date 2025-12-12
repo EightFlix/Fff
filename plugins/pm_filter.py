@@ -3,7 +3,6 @@ import re
 import math
 import logging
 import urllib.parse
-from datetime import datetime
 from info import (
     IS_PREMIUM, PRE_DAY_AMOUNT, RECEIPT_SEND_USERNAME, UPI_ID, UPI_NAME,
     ADMINS, MAX_BTN, BIN_CHANNEL, IS_STREAM, DELETE_TIME, 
@@ -11,7 +10,7 @@ from info import (
 )
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from hydrogram import Client, filters, enums
-from hydrogram.errors import MessageNotModified, ListenerTimeout
+from hydrogram.errors import MessageNotModified
 from utils import (
     is_premium, get_size, is_subscribed, is_check_admin, get_wish, 
     get_readable_time, temp, get_settings, save_group_settings
@@ -25,89 +24,85 @@ logger = logging.getLogger(__name__)
 BUTTONS = {}
 CAP = {}
 
-# --- 🔥 COMPILED REGEX ---
+# --- 🔥 COMPILED REGEX (Extension Removal) ---
 EXT_PATTERN = re.compile(r"\b(mkv|mp4|avi|m4v|webm|flv|mov|wmv|3gp|mpg|mpeg)\b", re.IGNORECASE)
 
 # --- 🔍 PM SEARCH HANDLER ---
 @Client.on_message(filters.private & filters.text & filters.incoming)
 async def pm_search(client, message):
-    if message.text.startswith("/"):
-        return
-        
-    if not await is_premium(message.from_user.id, client):
-        return
-
+    if message.text.startswith("/"): return
+    if not await is_premium(message.from_user.id, client): return
     stg = await db.get_bot_sttgs()
     if not stg: stg = {}
-        
     if 'AUTO_FILTER' in stg and not stg.get('AUTO_FILTER'):
-        return await message.reply_text('<b>🚫 Auto Filter is Globally Disabled by Admin!</b>')
-        
+        return await message.reply_text('<b>🚫 Auto Filter is Globally Disabled!</b>')
     s = await message.reply(f"<b>🔍 Sᴇᴀʀᴄʜɪɴɢ... Pʟᴇᴀsᴇ Wᴀɪᴛ ✋</b>", quote=True, parse_mode=enums.ParseMode.HTML)
     await auto_filter(client, message, s)
 
-# --- 🏘️ GROUP SEARCH HANDLER ---
+# --- 🏘️ GROUP SEARCH HANDLER (MAIN FIX HERE) ---
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def group_search(client, message):
     
-    # 🛑 1. SUPPORT GROUP CHECK (Fixed Logic) 🛑
-    # हम दोनों IDs को Integer (Number) में बदलकर मैच करेंगे
+    # 🛑 1. SUPPORT GROUP CHECK (Strict Integer Matching) 🛑
+    # यह कोड सबसे ऊपर है, ताकि एडमिन चेक से पहले ही रन हो जाए।
     try:
+        # दोनों IDs को Integer (Number) में बदलो ताकि गलती न हो
         current_chat_id = int(message.chat.id)
-        # अगर SUPPORT_GROUP सेट नहीं है तो 0 मान लो
-        support_chat_id = int(SUPPORT_GROUP) if SUPPORT_GROUP else 0
-    except:
-        support_chat_id = 0
-        current_chat_id = message.chat.id
-
-    # अगर यह सपोर्ट ग्रुप है:
-    if support_chat_id != 0 and current_chat_id == support_chat_id:
-        # A. लिंक चेक करो और डिलीट करो
-        if re.findall(r'https?://\S+|www\.\S+|t\.me/\S+', message.text):
-            async def delete_link():
-                await asyncio.sleep(300) # 5 मिनट का इंतज़ार
-                try: await message.delete()
-                except: pass
-            asyncio.create_task(delete_link())
+        # अगर SUPPORT_GROUP खाली है तो उसे 0 मान लो
+        config_support_id = int(SUPPORT_GROUP) if SUPPORT_GROUP else 0
         
-        # B. सबसे ज़रूरी: यहीं रुक जाओ (Return). आगे सर्च मत करो।
-        return 
+        # DEBUG: कंसोल में देखो कि क्या ID मैच हो रही है (Redeploy के बाद Logs चेक करना)
+        # print(f"DEBUG CHECK: Current Group: {current_chat_id} vs Config Support: {config_support_id}")
 
-    # --- 2. PREMIUM CHECK ---
+        if config_support_id != 0 and current_chat_id == config_support_id:
+            # A. लिंक चेक (Admin हो या User, लिंक 5 मिनट में डिलीट होगा)
+            # यहाँ हम एडमिन चेक नहीं लगा रहे, ताकि एडमिन का लिंक भी डिलीट हो जाए।
+            if re.findall(r'https?://\S+|www\.\S+|t\.me/\S+', message.text):
+                async def delete_link():
+                    await asyncio.sleep(300) # 300 सेकंड = 5 मिनट
+                    try: await message.delete()
+                    except: pass
+                asyncio.create_task(delete_link())
+            
+            # B. RETURN: यहाँ से वापस जाओ। आगे सर्च का कोड रन ही नहीं होगा।
+            return 
+
+    except Exception as e:
+        logger.error(f"Support Group Check Error: {e}")
+
+    # --- 2. NORMAL GROUP SEARCH LOGIC ---
     user_id = message.from_user.id if message.from_user else 0
-    if not await is_premium(user_id, client):
-        return
+    if not await is_premium(user_id, client): return
 
-    # --- 3. AUTO FILTER LOGIC ---
     stg = await db.get_bot_sttgs()
     if not stg: stg = {'AUTO_FILTER': True}
         
     if stg.get('AUTO_FILTER', True):
         if message.text.startswith("/"): return
-        
         if '@admin' in message.text.lower() or '@admins' in message.text.lower():
             if await is_check_admin(client, message.chat.id, message.from_user.id): return
             return
 
-        elif re.findall(r'https?://\S+|www\.\S+|t\.me/\S+|@\w+', message.text):
+        # Normal Group Link Check (Only deletes if NOT Admin)
+        if re.findall(r'https?://\S+|www\.\S+|t\.me/\S+|@\w+', message.text):
             if await is_check_admin(client, message.chat.id, message.from_user.id): return
             try: await message.delete()
             except: pass
             return await message.reply('<b>⚠️ Lɪɴᴋs ᴀʀᴇ ɴᴏᴛ ᴀʟʟᴏᴡᴇᴅ ʜᴇʀᴇ!</b>')
         
-        elif '#request' in message.text.lower():
+        if '#request' in message.text.lower():
             if message.from_user.id in ADMINS: return
             await client.send_message(LOG_CHANNEL, f"#Request\nUser: {message.from_user.mention}\nMsg: {message.text}")
             await message.reply_text("<b>✅ Rᴇǫᴜᴇsᴛ Sᴇɴᴛ Sᴜᴄᴄᴇssғᴜʟʟʏ!</b>")
             return  
-        else:
-            s = await message.reply(f"<b>🔍 Sᴇᴀʀᴄʜɪɴɢ... Pʟᴇᴀsᴇ Wᴀɪᴛ ✋</b>", parse_mode=enums.ParseMode.HTML)
-            await auto_filter(client, message, s)
+        
+        # Search Trigger
+        s = await message.reply(f"<b>🔍 Sᴇᴀʀᴄʜɪɴɢ... Pʟᴇᴀsᴇ Wᴀɪᴛ ✋</b>", parse_mode=enums.ParseMode.HTML)
+        await auto_filter(client, message, s)
     else:
         k = await message.reply_text('<b>❌ Aᴜᴛᴏ Fɪʟᴛᴇʀ ɪs OFF!</b>')
         await asyncio.sleep(5)
-        await k.delete()
-        try: await message.delete()
+        try: await k.delete(); await message.delete()
         except: pass
 
 # --- 📄 NEXT PAGE HANDLER ---
@@ -140,7 +135,6 @@ async def next_page(bot, query):
         files_link += f"""\n\n<b>{index}. <a href=https://t.me/{temp.U_NAME}?start=file_{query.message.chat.id}_{file['_id']}>[{get_size(file['file_size'])}] {f_name}</a></b>"""
 
     btn = []
-    
     btn.insert(0, [
         InlineKeyboardButton("♻️ Sᴇɴᴅ Aʟʟ", url=f"https://t.me/{temp.U_NAME}?start=all_{query.message.chat.id}_{key}"),
         InlineKeyboardButton("⚙️ Qᴜᴀʟɪᴛʏ", callback_data=f"quality#{key}#{req}#{offset}")
@@ -171,7 +165,7 @@ async def next_page(bot, query):
     except MessageNotModified:
         pass
 
-# --- 🔄 AUTO FILTER FUNCTION ---
+# --- 🔄 AUTO FILTER LOGIC ---
 async def auto_filter(client, msg, s, spoll=False):
     message = msg
     settings = await get_settings(message.chat.id)
@@ -202,7 +196,6 @@ async def auto_filter(client, msg, s, spoll=False):
         files_link += f"""\n\n<b>{index}. <a href=https://t.me/{temp.U_NAME}?start=file_{message.chat.id}_{file['_id']}>[{get_size(file['file_size'])}] {f_name}</a></b>"""
     
     btn = []
-    
     btn.insert(0, [
         InlineKeyboardButton("♻️ Sᴇɴᴅ Aʟʟ", url=f"https://t.me/{temp.U_NAME}?start=all_{message.chat.id}_{key}"),
         InlineKeyboardButton("⚙️ Qᴜᴀʟɪᴛʏ", callback_data=f"quality#{key}#{req}#0")
@@ -237,7 +230,7 @@ async def auto_filter(client, msg, s, spoll=False):
 
 # --- 🎥 QUALITY HANDLERS ---
 @Client.on_callback_query(filters.regex(r"^quality"))
-async def quality(client: Client, query: CallbackQuery):
+async def quality(client, query):
     _, key, req, offset = query.data.split("#")
     if int(req) != query.from_user.id:
         return await query.answer(f"🛑 Hᴇʏ {query.from_user.first_name}, Tʜɪs ɪs ɴᴏᴛ ғᴏʀ ʏᴏᴜ!", show_alert=True)
@@ -255,7 +248,7 @@ async def quality(client: Client, query: CallbackQuery):
     await query.message.edit_text("<b>🔽 Sᴇʟᴇᴄᴛ Rᴇsᴏʟᴜᴛɪᴏɴ / Qᴜᴀʟɪᴛʏ:</b>", reply_markup=InlineKeyboardMarkup(btn), parse_mode=enums.ParseMode.HTML)
 
 @Client.on_callback_query(filters.regex(r"^qual_search"))
-async def quality_search(client: Client, query: CallbackQuery):
+async def quality_search(client, query):
     _, qual, key, offset, req = query.data.split("#")
     if int(req) != query.from_user.id:
         return await query.answer(f"🛑 Hᴇʏ {query.from_user.first_name}, Tʜɪs ɪs ɴᴏᴛ ғᴏʀ ʏᴏᴜ!", show_alert=True)
@@ -285,14 +278,12 @@ async def quality_search(client: Client, query: CallbackQuery):
     ])
     
     btn.append([InlineKeyboardButton("⪻ Bᴀᴄᴋ", callback_data=f"next_{req}_{key}_{offset}")])
-    
     cap = f"<b>✨ <u>Fɪʟᴛᴇʀᴇᴅ Rᴇsᴜʟᴛs</u></b>\n\n<b>🔍 Qᴜᴇʀʏ:</b> <i>{search}</i> ({qual.upper()})\n<b>📂 Tᴏᴛᴀʟ:</b> {total}\n{files_link}"
-    
     await query.message.edit_text(cap, reply_markup=InlineKeyboardMarkup(btn), parse_mode=enums.ParseMode.HTML)
 
 # --- 🎛️ MAIN CALLBACK HANDLER ---
 @Client.on_callback_query()
-async def cb_handler(client: Client, query: CallbackQuery):
+async def cb_handler(client, query):
     if not query.message:
         return await query.answer("⚠️ Message not found (too old).", show_alert=True)
 
@@ -300,7 +291,6 @@ async def cb_handler(client: Client, query: CallbackQuery):
         await query.message.delete()
         try: await query.message.reply_to_message.delete()
         except: pass
-        
         if "#" in query.data:
             try:
                 warn_id = int(query.data.split("#")[1])
@@ -322,12 +312,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         base_url = SITE_URL[:-1] if SITE_URL.endswith('/') else SITE_URL
         watch = f"{base_url}/watch/{msg.id}"
         download = f"{base_url}/download/{msg.id}"
-        btn=[[
-            InlineKeyboardButton("🎬 Wᴀᴛᴄʜ Oɴʟɪɴᴇ", url=watch),
-            InlineKeyboardButton("⚡ Fᴀsᴛ Dᴏᴡɴʟᴏᴀᴅ", url=download)
-        ],[
-            InlineKeyboardButton('❌ Cʟᴏsᴇ', callback_data='close_data')
-        ]]
+        btn=[[InlineKeyboardButton("🎬 Wᴀᴛᴄʜ Oɴʟɪɴᴇ", url=watch), InlineKeyboardButton("⚡ Fᴀsᴛ Dᴏᴡɴʟᴏᴀᴅ", url=download)],[InlineKeyboardButton('❌ Cʟᴏsᴇ', callback_data='close_data')]]
         await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
 
     elif query.data == 'activate_plan':
@@ -348,74 +333,45 @@ async def cb_handler(client: Client, query: CallbackQuery):
         transaction_note = f'{days} Days Premium for {query.from_user.id}'
         amount = days * PRE_DAY_AMOUNT
         upi_link = f"upi://pay?pa={UPI_ID}&pn={UPI_NAME}&am={amount}&cu=INR&tn={transaction_note}"
-        
         qr = qrcode.make(upi_link)
         qr_path = f"upi_qr_{query.from_user.id}.png"
         qr.save(qr_path)
         await q.delete()
-        
-        caption = (f"<b>💳 <u>Pᴀʏᴍᴇɴᴛ Gᴀᴛᴇᴡᴀʏ</u></b>\n\n"
-                   f"<b>🗓 Pʟᴀɴ:</b> {days} Days\n"
-                   f"<b>💰 Aᴍᴏᴜɴᴛ:</b> ₹{amount}\n"
-                   f"<b>🆔 UPI ID:</b> <code>{UPI_ID}</code>\n\n"
-                   f"<i>📲 Scan QR to pay & send screenshot here.</i>")
-        try:
-            await query.message.reply_photo(photo=qr_path, caption=caption)
-        except:
-            await query.message.reply("❌ Error generating QR.")
+        caption = (f"<b>💳 <u>Pᴀʏᴍᴇɴᴛ Gᴀᴛᴇᴡᴀʏ</u></b>\n\n<b>🗓 Pʟᴀɴ:</b> {days} Days\n<b>💰 Aᴍᴏᴜɴᴛ:</b> ₹{amount}\n<b>🆔 UPI ID:</b> <code>{UPI_ID}</code>\n\n<i>📲 Scan QR to pay & send screenshot here.</i>")
+        try: await query.message.reply_photo(photo=qr_path, caption=caption)
+        except: await query.message.reply("❌ Error generating QR.")
         finally:
             if os.path.exists(qr_path): os.remove(qr_path)
-                
         try:
             receipt = await client.listen(chat_id=query.message.chat.id, user_id=query.from_user.id, timeout=600)
             if receipt.photo or receipt.document:
                 btn = [[InlineKeyboardButton(f"✅ Confirm Payment ({days} Days)", callback_data=f"confirm_pay#{query.from_user.id}#{days}")]]
-                await receipt.copy(
-                    chat_id=RECEIPT_SEND_USERNAME, 
-                    caption=f"<b>💰 Nᴇᴡ Pᴀʏᴍᴇɴᴛ Rᴇᴄᴇɪᴠᴇᴅ!</b>\n\n👤 <b>Usᴇʀ:</b> {query.from_user.mention}\n🆔 <b>ID:</b> <code>{query.from_user.id}</code>\n🗓 <b>Rᴇǫᴜᴇsᴛ:</b> {days} Days",
-                    reply_markup=InlineKeyboardMarkup(btn)
-                )
+                await receipt.copy(chat_id=RECEIPT_SEND_USERNAME, caption=f"<b>💰 Nᴇᴡ Pᴀʏᴍᴇɴᴛ Rᴇᴄᴇɪᴠᴇᴅ!</b>\n\n👤 <b>Usᴇʀ:</b> {query.from_user.mention}\n🆔 <b>ID:</b> <code>{query.from_user.id}</code>\n🗓 <b>Rᴇǫᴜᴇsᴛ:</b> {days} Days", reply_markup=InlineKeyboardMarkup(btn))
                 await query.message.reply("<b>✅ Rᴇᴄᴇɪᴘᴛ Sᴇɴᴛ! Pʟᴇᴀsᴇ ᴡᴀɪᴛ ғᴏʀ Aᴅᴍɪɴ Aᴘᴘʀᴏᴠᴀʟ.</b>")
-            else:
-                await query.message.reply("<b>❌ Iɴᴠᴀʟɪᴅ Rᴇᴄᴇɪᴘᴛ! Tʀᴀɴsᴀᴄᴛɪᴏɴ Fᴀɪʟᴇᴅ.</b>")
-        except ListenerTimeout:
-            await query.message.reply(f"<b>⏳ Sᴇssɪᴏɴ Exᴘɪʀᴇᴅ!</b>\nSend screenshot manually to {RECEIPT_SEND_USERNAME}")
+            else: await query.message.reply("<b>❌ Iɴᴠᴀʟɪᴅ Rᴇᴄᴇɪᴘᴛ! Tʀᴀɴsᴀᴄᴛɪᴏɴ Fᴀɪʟᴇᴅ.</b>")
+        except ListenerTimeout: await query.message.reply(f"<b>⏳ Sᴇssɪᴏɴ Exᴘɪʀᴇᴅ!</b>\nSend screenshot manually to {RECEIPT_SEND_USERNAME}")
 
     elif query.data == "start":
-        buttons = [[
-            InlineKeyboardButton('👨‍🚒 Help', callback_data='help'),
-            InlineKeyboardButton('📚 Status 📊', callback_data='stats')
-        ]]
-        try:
-            await query.message.edit_text(script.START_TXT.format(query.from_user.mention, get_wish()), reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML)
-        except MessageNotModified:
-            pass
+        buttons = [[InlineKeyboardButton('👨‍🚒 Help', callback_data='help'), InlineKeyboardButton('📚 Status 📊', callback_data='stats')]]
+        try: await query.message.edit_text(script.START_TXT.format(query.from_user.mention, get_wish()), reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML)
+        except MessageNotModified: pass
 
     elif query.data == "help":
-        buttons = [[
-            InlineKeyboardButton('🙋🏻‍♀️ User', callback_data='user_command'),
-            InlineKeyboardButton('🦹 Admin', callback_data='admin_command')
-        ],[
-            InlineKeyboardButton('🏄 Back', callback_data='start')
-        ]]
-        try:
-            await query.message.edit_text(script.HELP_TXT.format(query.from_user.mention), reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML)
-        except MessageNotModified:
-            pass
+        buttons = [[InlineKeyboardButton('🙋🏻‍♀️ User', callback_data='user_command'), InlineKeyboardButton('🦹 Admin', callback_data='admin_command')],[InlineKeyboardButton('🏄 Back', callback_data='start')]]
+        try: await query.message.edit_text(script.HELP_TXT.format(query.from_user.mention), reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML)
+        except MessageNotModified: pass
 
     elif query.data == "user_command":
         buttons = [[InlineKeyboardButton('🏄 Back', callback_data='help')]]
         await query.message.edit_text(script.USER_COMMAND_TXT, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML)
         
     elif query.data == "admin_command":
-        if query.from_user.id not in ADMINS:
-            return await query.answer("🛑 ADMINS Only!", show_alert=True)
+        if query.from_user.id not in ADMINS: return await query.answer("🛑 ADMINS Only!", show_alert=True)
         buttons = [[InlineKeyboardButton('🏄 Back', callback_data='help')]]
         await query.message.edit_text(script.ADMIN_COMMAND_TXT, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML)
 
     elif query.data == "stats":
-        if query.from_user.id not in ADMINS:
-            return await query.answer("🛑 ADMINS Only!", show_alert=True)
+        if query.from_user.id not in ADMINS: return await query.answer("🛑 ADMINS Only!", show_alert=True)
         files = await db_count_documents()
         users = await db.total_users_count()
         chats = await db.total_chat_count()
@@ -430,9 +386,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
     elif query.data.startswith("bool_setgs"):
         ident, set_type, status, grp_id = query.data.split("#")
         userid = query.from_user.id
-        if not await is_check_admin(client, int(grp_id), userid):
-            await query.answer("🛑 You are not Admin!", show_alert=True)
-            return
+        if not await is_check_admin(client, int(grp_id), userid): return await query.answer("🛑 You are not Admin!", show_alert=True)
         await save_group_settings(int(grp_id), set_type, status != "True")
         btn = await get_grp_stg(int(grp_id))
         await query.message.edit_reply_markup(InlineKeyboardMarkup(btn))
