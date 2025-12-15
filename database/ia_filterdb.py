@@ -67,7 +67,8 @@ async def save_file(media):
     
     try:
         await collection.insert_one(document)
-        logger.info(f"✅ Saved: {file_name[:50]}...") 
+        # --- LOGGING DISABLED HERE ---
+        # logger.info(f"✅ Saved: {file_name[:50]}...") 
         return 'suc'
     except DuplicateKeyError:
         return 'dup'
@@ -107,7 +108,8 @@ async def update_file(media):
                 'file_size': media.file_size
             }}
         )
-        logger.info(f"📝 Updated: {file_name[:50]}...")
+        # --- LOGGING DISABLED HERE ---
+        # logger.info(f"📝 Updated: {file_name[:50]}...")
         return 'suc'
     except Exception as e:
         logger.error(f"❌ Error Updating: {e}")
