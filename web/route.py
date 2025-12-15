@@ -5,10 +5,16 @@ from aiohttp import web
 from utils import temp
 from info import BIN_CHANNEL
 from web.utils.render_template import media_watch
-from hydrogram.errors import RPCError # Import Added
+from hydrogram.errors import RPCError 
 
 routes = web.RouteTableDef()
 logger = logging.getLogger(__name__)
+
+# --- HOME/PING ROUTE (ADDED FOR UPTIME) ---
+# ये रूट UptimeRobot को 200 OK भेजेगा ताकि बोट सोए नहीं
+@routes.get("/", allow_head=True)
+async def root_route_handler(request):
+    return web.json_response("Bot is Running!")
 
 # --- WATCH PAGE ---
 @routes.get("/watch/{message_id}")
@@ -39,7 +45,7 @@ async def thumbnail_handler(request):
         logger.error(f"Thumbnail Error: {e}")
         return web.Response(status=500)
 
-# --- FILE STREAMER (FIXED) ---
+# --- FILE STREAMER ---
 @routes.get("/download/{message_id}")
 async def stream_handler(request):
     try:
