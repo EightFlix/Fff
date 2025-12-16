@@ -3,6 +3,9 @@ import re
 import math
 import logging
 import urllib.parse
+import time
+import os
+import qrcode
 from info import (
     IS_PREMIUM, PRE_DAY_AMOUNT, RECEIPT_SEND_USERNAME, UPI_ID, UPI_NAME,
     ADMINS, MAX_BTN, BIN_CHANNEL, IS_STREAM, DELETE_TIME, 
@@ -10,10 +13,10 @@ from info import (
 )
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from hydrogram import Client, filters, enums
-from hydrogram.errors import MessageNotModified
+from hydrogram.errors import MessageNotModified, ListenerTimeout
 from utils import (
     is_premium, get_size, is_subscribed, is_check_admin, get_wish, 
-    get_readable_time, temp, get_settings, save_group_settings
+    get_readable_time, temp, get_settings, save_group_settings, get_grp_stg
 )
 from database.users_chats_db import db
 from database.ia_filterdb import get_search_results, delete_files, db_count_documents
@@ -385,7 +388,7 @@ async def cb_handler(client, query):
         used_bytes, free_bytes = await db.get_db_size()
         used = get_size(used_bytes)
         free = get_size(free_bytes)
-        uptime = get_readable_time(time_now() - temp.START_TIME)
+        uptime = get_readable_time(time.time() - temp.START_TIME)
         buttons = [[InlineKeyboardButton('🏄 Back', callback_data='start')]]
         await query.message.edit_text(script.STATUS_TXT.format(files, users, chats, prm, used, free, uptime), reply_markup=InlineKeyboardMarkup(buttons))
 
