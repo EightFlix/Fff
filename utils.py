@@ -43,6 +43,10 @@ async def get_settings(group_id):
         temp.SETTINGS[group_id] = settings
     return settings
 
+# Yeh function missing tha, maine add kar diya hai
+async def get_grp_stg(group_id):
+    return await get_settings(group_id)
+
 async def save_group_settings(group_id, key, value):
     current = await get_settings(group_id)
     current[key] = value
@@ -204,3 +208,4 @@ async def get_verify_status(user_id):
 
 async def update_verify_status(user_id, verify_token="", is_verified=False, link="", expire_time=0):
     await db.update_verify_status(user_id, verify_token, is_verified, link, expire_time)
+
