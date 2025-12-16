@@ -10,4 +10,5 @@ requests
 qrcode
 Pillow
 uvloop
+hachoir
 
