@@ -5,6 +5,7 @@ import asyncio
 import time
 import math
 import pytz
+import requests  # Requests ko top par import karna better hai
 from datetime import datetime, timezone
 from info import (
     LOG_CHANNEL, API_ID, API_HASH, BOT_TOKEN, 
@@ -43,7 +44,7 @@ async def get_settings(group_id):
         temp.SETTINGS[group_id] = settings
     return settings
 
-# Yeh function missing tha, maine add kar diya hai
+# Backup function to prevent ImportError
 async def get_grp_stg(group_id):
     return await get_settings(group_id)
 
@@ -175,12 +176,39 @@ async def is_premium(user_id, client):
         return True 
     return False
 
-# --- IMAGE UPLOADER ---
-import requests
+# --- IMAGE UPLOADER (Updated: Graph.org + Catbox) ---
 def upload_image(path):
     try:
-        return None 
-    except:
+        file_size = os.path.getsize(path)
+        
+        # 1. Try Graph.org for files < 5MB
+        if file_size < 5 * 1024 * 1024:
+            try:
+                upload_path = "https://graph.org/upload"
+                files = {'file': open(path, 'rb')}
+                response = requests.post(upload_path, files=files)
+                result = response.json()
+                if result and isinstance(result, list) and result[0].get('src'):
+                    return "https://graph.org" + result[0]['src']
+            except Exception as e:
+                print(f"Graph.org upload failed: {e}")
+                # Fallback to Catbox logic below
+
+        # 2. Try Catbox for files < 200MB (Runs if > 5MB OR Graph.org failed)
+        if file_size < 200 * 1024 * 1024:
+            try:
+                upload_path = "https://catbox.moe/user/api.php"
+                data = {'reqtype': 'fileupload'}
+                files = {'fileToUpload': open(path, 'rb')}
+                response = requests.post(upload_path, data=data, files=files)
+                if response.status_code == 200:
+                    return response.text.strip()
+            except Exception as e:
+                print(f"Catbox upload failed: {e}")
+
+        return None
+    except Exception as e:
+        print(f"Upload Process Error: {e}")
         return None
 
 # --- WISHES ---
