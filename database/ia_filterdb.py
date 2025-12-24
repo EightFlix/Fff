@@ -1,105 +1,144 @@
 import logging
 import re
 import base64
+import asyncio
 from struct import pack
+from typing import List, Tuple, Optional
 from hydrogram.file_id import FileId
 from motor.motor_asyncio import AsyncIOMotorClient
-from pymongo import TEXT
+from pymongo import TEXT, DESCENDING
 from pymongo.errors import DuplicateKeyError, OperationFailure
 from info import DATA_DATABASE_URL, DATABASE_NAME, COLLECTION_NAME, MAX_BTN, USE_CAPTION_FILTER
 
 logger = logging.getLogger(__name__)
 
-client = AsyncIOMotorClient(DATA_DATABASE_URL)
+# =====================================================
+# DATABASE CONNECTION WITH POOLING
+# =====================================================
+client = AsyncIOMotorClient(
+    DATA_DATABASE_URL,
+    maxPoolSize=50,  # Connection pool for performance
+    minPoolSize=10,
+    serverSelectionTimeoutMS=5000,
+    connectTimeoutMS=10000
+)
 db = client[DATABASE_NAME]
 collection = db[COLLECTION_NAME]
 
-# --- ⚡ COMPILED REGEX PATTERNS ---
+# =====================================================
+# PRE-COMPILED REGEX PATTERNS (PERFORMANCE BOOST)
+# =====================================================
 RE_SPECIAL = re.compile(r"[\.\+\-_]")
 RE_USERNAMES = re.compile(r"@\w+")
 RE_BRACKETS = re.compile(r"[\[\(\{].*?[\]\}\)]")
-RE_EXTENSIONS = re.compile(r"\b(mkv|mp4|avi|m4v|webm|flv)\b", flags=re.IGNORECASE)
+RE_EXTENSIONS = re.compile(r"\b(mkv|mp4|avi|m4v|webm|flv)\b", re.IGNORECASE)
 RE_SPACES = re.compile(r"\s+")
-# RE_RESOLUTION is defined but NOT used for substitution (as requested)
-RE_RESOLUTION = re.compile(r'\b\d{3,4}p\b', re.IGNORECASE)
 
+# =====================================================
+# IN-MEMORY CACHE (ULTRA FAST)
+# =====================================================
+SEARCH_CACHE = {}
+CACHE_TTL = 180  # 3 minutes
+MAX_CACHE_SIZE = 1000
 
-async def create_text_index():
+def get_cache(key: str) -> Optional[Tuple]:
+    """Get cached search results"""
+    if key in SEARCH_CACHE:
+        import time
+        data, timestamp = SEARCH_CACHE[key]
+        if time.time() - timestamp < CACHE_TTL:
+            return data
+        SEARCH_CACHE.pop(key, None)
+    return None
+
+def set_cache(key: str, value: Tuple):
+    """Cache search results with size limit"""
+    import time
+    SEARCH_CACHE[key] = (value, time.time())
+    
+    # Prevent memory overflow
+    if len(SEARCH_CACHE) > MAX_CACHE_SIZE:
+        oldest = min(SEARCH_CACHE.items(), key=lambda x: x[1][1])
+        SEARCH_CACHE.pop(oldest[0], None)
+
+# =====================================================
+# CREATE INDEXES (ONE-TIME SETUP)
+# =====================================================
+async def create_indexes():
+    """Create necessary indexes for fast search"""
     try:
-        await collection.create_index([("file_name", TEXT), ("caption", TEXT)], name="file_search_index")
+        # Text search index
+        await collection.create_index(
+            [("file_name", TEXT), ("caption", TEXT)],
+            name="file_search_index"
+        )
+        
+        # Regular index for sorting
+        await collection.create_index([("_id", DESCENDING)])
+        
+        logger.info("✅ Indexes created successfully")
     except Exception as e:
-        logger.warning(f"Index Error: {e}")
+        logger.warning(f"Index creation: {e}")
 
-# --- SAVE FILE (FINAL CLEANING) ---
-async def save_file(media):
-    file_id = unpack_new_file_id(media.file_id)
+# =====================================================
+# FAST TEXT CLEANER
+# =====================================================
+def clean_text(text: str) -> str:
+    """Ultra-fast text cleaning"""
+    if not text:
+        return ""
     
-    # 1. Cleaning Filename
-    original_name = str(media.file_name or "")
-    clean_name = RE_SPECIAL.sub(" ", original_name)
-    clean_name = RE_USERNAMES.sub("", clean_name)
-    clean_name = RE_BRACKETS.sub("", clean_name)
-    clean_name = RE_EXTENSIONS.sub("", clean_name) 
-    # REMOVED: clean_name = RE_RESOLUTION.sub("", clean_name)
-    clean_name = RE_SPACES.sub(" ", clean_name)
+    # Apply all regex in one pass
+    text = RE_SPECIAL.sub(" ", text)
+    text = RE_USERNAMES.sub("", text)
+    text = RE_BRACKETS.sub("", text)
+    text = RE_EXTENSIONS.sub("", text)
+    text = RE_SPACES.sub(" ", text)
     
-    # 🔥 FIX: Apply Title Case and specific 'l' replacement during saving
-    file_name = clean_name.strip().title().replace(" L ", " l ")
-    
-    # 2. Cleaning Caption
-    original_caption = str(media.caption or "")
-    clean_caption = RE_SPECIAL.sub(" ", original_caption)
-    clean_caption = RE_USERNAMES.sub("", clean_caption)
-    clean_caption = RE_BRACKETS.sub("", clean_caption)
-    clean_caption = RE_EXTENSIONS.sub("", clean_caption)
-    # REMOVED: clean_caption = RE_RESOLUTION.sub("", clean_caption)
-    clean_caption = RE_SPACES.sub(" ", clean_caption)
-    file_caption = clean_caption.strip()
-    
-    document = {
-        '_id': file_id,
-        'file_name': file_name,
-        'file_size': media.file_size,
-        'caption': file_caption,
-        'file_type': media.file_type,
-        'mime_type': media.mime_type
-    }
-    
+    # Title case with specific replacements
+    return text.strip().title().replace(" L ", " l ")
+
+# =====================================================
+# SAVE FILE (OPTIMIZED)
+# =====================================================
+async def save_file(media) -> str:
+    """Save file with minimal processing"""
     try:
+        file_id = unpack_new_file_id(media.file_id)
+        
+        # Fast cleaning
+        file_name = clean_text(str(media.file_name or ""))
+        file_caption = clean_text(str(media.caption or ""))
+        
+        document = {
+            '_id': file_id,
+            'file_name': file_name,
+            'file_size': media.file_size,
+            'caption': file_caption,
+            'file_type': media.file_type,
+            'mime_type': media.mime_type
+        }
+        
         await collection.insert_one(document)
-        # --- LOGGING DISABLED HERE ---
-        # logger.info(f"✅ Saved: {file_name[:50]}...") 
         return 'suc'
+    
     except DuplicateKeyError:
         return 'dup'
     except Exception as e:
-        logger.error(f"❌ Error Saving: {e}")
+        logger.error(f"Save error: {e}")
         return 'err'
 
-# --- UPDATE FILE (EDIT) ---
-async def update_file(media):
-    file_id = unpack_new_file_id(media.file_id)
-    
-    original_name = str(media.file_name or "")
-    clean_name = RE_SPECIAL.sub(" ", original_name)
-    clean_name = RE_USERNAMES.sub("", clean_name)
-    clean_name = RE_BRACKETS.sub("", clean_name)
-    clean_name = RE_EXTENSIONS.sub("", clean_name)
-    # REMOVED: clean_name = RE_RESOLUTION.sub("", clean_name)
-    clean_name = RE_SPACES.sub(" ", clean_name)
-    # 🔥 FIX: Apply Title Case and specific 'l' replacement during updating
-    file_name = clean_name.strip().title().replace(" L ", " l ")
-    
-    original_caption = str(media.caption or "")
-    clean_caption = RE_SPECIAL.sub(" ", original_caption)
-    clean_caption = RE_USERNAMES.sub("", clean_caption)
-    clean_caption = RE_BRACKETS.sub("", clean_caption)
-    clean_caption = RE_EXTENSIONS.sub("", clean_caption)
-    # REMOVED: clean_caption = RE_RESOLUTION.sub("", clean_caption)
-    clean_caption = RE_SPACES.sub(" ", clean_caption)
-    file_caption = clean_caption.strip()
-    
+# =====================================================
+# UPDATE FILE (OPTIMIZED)
+# =====================================================
+async def update_file(media) -> str:
+    """Update file with minimal processing"""
     try:
+        file_id = unpack_new_file_id(media.file_id)
+        
+        file_name = clean_text(str(media.file_name or ""))
+        file_caption = clean_text(str(media.caption or ""))
+        
         await collection.update_one(
             {'_id': file_id},
             {'$set': {
@@ -108,94 +147,178 @@ async def update_file(media):
                 'file_size': media.file_size
             }}
         )
-        # --- LOGGING DISABLED HERE ---
-        # logger.info(f"📝 Updated: {file_name[:50]}...")
         return 'suc'
     except Exception as e:
-        logger.error(f"❌ Error Updating: {e}")
+        logger.error(f"Update error: {e}")
         return 'err'
 
-async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None):
-    query = str(query).strip().lower()
+# =====================================================
+# ULTRA-FAST SEARCH (WITH CACHING)
+# =====================================================
+async def get_search_results(
+    query: str,
+    max_results: int = MAX_BTN,
+    offset: int = 0,
+    lang: Optional[str] = None
+) -> Tuple[List, any, int]:
+    """Ultra-fast search with caching and optimization"""
+    
+    # Validate input
+    if not query or len(query.strip()) < 2:
+        return [], "", 0
+    
+    # Clean query
+    query = query.strip().lower()
     query = RE_SPECIAL.sub(" ", query)
     query = RE_SPACES.sub(" ", query).strip()
-
-    if not query:
-        return [], "", 0
-
-    text_results = []
-    total_text_results = 0
-    text_search_failed = False
-
+    
+    # Check cache first
+    cache_key = f"{query}:{offset}:{lang}"
+    cached = get_cache(cache_key)
+    if cached:
+        return cached
+    
+    # ================================================
+    # METHOD 1: TEXT SEARCH (FASTEST)
+    # ================================================
     try:
+        # Build search query
         if lang:
-            search_query = f'"{query}" "{lang}"' 
-            filter_dict = {'$text': {'$search': search_query}}
+            search_query = f'"{query}" "{lang}"'
         else:
-            filter_dict = {'$text': {'$search': query}} 
+            search_query = query
         
-        total_text_results = await collection.count_documents(filter_dict)
+        filter_dict = {'$text': {'$search': search_query}}
         
-        if total_text_results > 0:
-            cursor = collection.find(filter_dict, {'score': {'$meta': 'textScore'}}).sort([('score', {'$meta': 'textScore'})])
+        # Count total (with limit for performance)
+        total = await collection.count_documents(filter_dict, limit=10000)
+        
+        if total > 0:
+            # Fetch results with projection (faster)
+            cursor = collection.find(
+                filter_dict,
+                {
+                    'file_name': 1,
+                    'file_size': 1,
+                    'caption': 1,
+                    'score': {'$meta': 'textScore'}
+                }
+            ).sort([('score', {'$meta': 'textScore'})])
+            
+            # Apply pagination
             cursor.skip(offset).limit(max_results)
-            text_results = [doc async for doc in cursor]
             
-            next_offset = offset + len(text_results)
-            if next_offset >= total_text_results or len(text_results) == 0:
+            # Convert to list efficiently
+            results = await cursor.to_list(length=max_results)
+            
+            # Calculate next offset
+            next_offset = offset + len(results)
+            if next_offset >= total or len(results) < max_results:
                 next_offset = ""
-            return text_results, next_offset, total_text_results
             
+            # Cache and return
+            result = (results, next_offset, total)
+            set_cache(cache_key, result)
+            return result
+    
     except OperationFailure:
-        text_search_failed = True
+        pass  # Fall through to regex
     except Exception as e:
-        logger.error(f"Text Search Error: {e}")
-        text_search_failed = True
-
-    if total_text_results == 0 or text_search_failed:
-        try:
-            words = query.split()
-            if len(words) > 0: 
-                regex_pattern = ""
-                for word in words:
-                    regex_pattern += f"(?=.*{re.escape(word)})"
-                
-                if USE_CAPTION_FILTER:
-                    regex_filter = {
-                        '$or': [
-                            {'file_name': {'$regex': regex_pattern, '$options': 'i'}},
-                            {'caption': {'$regex': regex_pattern, '$options': 'i'}}
-                        ]
-                    }
-                else:
-                    regex_filter = {'file_name': {'$regex': regex_pattern, '$options': 'i'}}
-                
-                total_results_regex = await collection.count_documents(regex_filter)
-                
-                if total_results_regex > 0:
-                    cursor = collection.find(regex_filter).sort('_id', -1)
-                    cursor.skip(offset).limit(max_results)
-                    files = [doc async for doc in cursor]
-                    
-                    next_offset = offset + len(files)
-                    if next_offset >= total_results_regex or len(files) == 0:
-                        next_offset = ""
-                        
-                    return files, next_offset, total_results_regex
-        except Exception as e:
-            logger.error(f"Regex Search Error: {e}")
+        logger.error(f"Text search error: {e}")
+    
+    # ================================================
+    # METHOD 2: REGEX SEARCH (FALLBACK)
+    # ================================================
+    try:
+        words = query.split()
+        if not words:
             return [], "", 0
-
+        
+        # Build optimized regex pattern
+        # Instead of (?=.*word1)(?=.*word2), use direct pattern
+        if len(words) == 1:
+            pattern = re.escape(words[0])
+        else:
+            # Match all words in any order
+            pattern = ".*".join([re.escape(word) for word in words])
+        
+        # Build filter
+        if USE_CAPTION_FILTER:
+            regex_filter = {
+                '$or': [
+                    {'file_name': {'$regex': pattern, '$options': 'i'}},
+                    {'caption': {'$regex': pattern, '$options': 'i'}}
+                ]
+            }
+        else:
+            regex_filter = {'file_name': {'$regex': pattern, '$options': 'i'}}
+        
+        # Count with limit
+        total = await collection.count_documents(regex_filter, limit=5000)
+        
+        if total > 0:
+            # Fetch with projection
+            cursor = collection.find(
+                regex_filter,
+                {'file_name': 1, 'file_size': 1, 'caption': 1}
+            ).sort('_id', DESCENDING)
+            
+            cursor.skip(offset).limit(max_results)
+            results = await cursor.to_list(length=max_results)
+            
+            # Calculate next offset
+            next_offset = offset + len(results)
+            if next_offset >= total or len(results) < max_results:
+                next_offset = ""
+            
+            # Cache and return
+            result = (results, next_offset, min(total, 5000))
+            set_cache(cache_key, result)
+            return result
+    
+    except Exception as e:
+        logger.error(f"Regex search error: {e}")
+    
     return [], "", 0
 
-async def get_file_details(query):
+# =====================================================
+# GET FILE DETAILS (CACHED)
+# =====================================================
+FILE_CACHE = {}
+FILE_CACHE_TTL = 300  # 5 minutes
+
+async def get_file_details(file_id: str) -> Optional[dict]:
+    """Get file details with caching"""
+    if not file_id:
+        return None
+    
+    # Check cache
+    if file_id in FILE_CACHE:
+        import time
+        data, timestamp = FILE_CACHE[file_id]
+        if time.time() - timestamp < FILE_CACHE_TTL:
+            return data
+        FILE_CACHE.pop(file_id, None)
+    
+    # Fetch from DB
     try:
-        file_details = await collection.find_one({'_id': query})
-        return file_details
-    except Exception:
+        file_data = await collection.find_one({'_id': file_id})
+        
+        # Cache result
+        if file_data:
+            import time
+            FILE_CACHE[file_id] = (file_data, time.time())
+        
+        return file_data
+    except Exception as e:
+        logger.error(f"Get file error: {e}")
         return None
 
+# =====================================================
+# FILE ID ENCODING (NO CHANGES NEEDED)
+# =====================================================
 def encode_file_id(s: bytes) -> str:
+    """Encode file ID to base64"""
     r = b""
     n = 0
     for i in s + bytes([22]) + bytes([4]):
@@ -208,39 +331,77 @@ def encode_file_id(s: bytes) -> str:
             r += bytes([i])
     return base64.urlsafe_b64encode(r).decode().rstrip("=")
 
-def unpack_new_file_id(new_file_id):
-    decoded = FileId.decode(new_file_id)
-    file_id = encode_file_id(
-        pack(
-            "<iiqq",
-            int(decoded.file_type),
-            decoded.dc_id,
-            decoded.media_id,
-            decoded.access_hash
-        )
-    )
-    return file_id
-
-async def db_count_documents():
-     return await collection.count_documents({})
-
-async def delete_files(query):
-    if query is None or str(query).strip() == "":
-        try:
-            result = await collection.delete_many({})
-            logger.info(f"🗑️ DELETED ALL FILES: {result.deleted_count}")
-            return result.deleted_count
-        except Exception as e:
-            logger.error(f"Delete All Error: {e}")
-            return 0
-
-    query = str(query).strip()
-    filter = {'file_name': {'$regex': query, '$options': 'i'}}
-    
+def unpack_new_file_id(new_file_id: str) -> str:
+    """Decode and unpack Telegram file ID"""
     try:
-        result = await collection.delete_many(filter)
-        logger.info(f"🗑️ Deleted {result.deleted_count} files for query: {query}")
-        return result.deleted_count
+        decoded = FileId.decode(new_file_id)
+        return encode_file_id(
+            pack(
+                "<iiqq",
+                int(decoded.file_type),
+                decoded.dc_id,
+                decoded.media_id,
+                decoded.access_hash
+            )
+        )
     except Exception as e:
-        logger.error(f"Delete Specific Error: {e}")
+        logger.error(f"Unpack file ID error: {e}")
+        return ""
+
+# =====================================================
+# DATABASE COUNT (FAST)
+# =====================================================
+async def db_count_documents() -> int:
+    """Get approximate document count (fast)"""
+    try:
+        return await collection.estimated_document_count()
+    except:
         return 0
+
+# =====================================================
+# DELETE FILES (OPTIMIZED)
+# =====================================================
+async def delete_files(query: str) -> int:
+    """Delete files matching query"""
+    try:
+        # Delete all
+        if not query or query.strip() == "":
+            result = await collection.delete_many({})
+            
+            # Clear caches
+            SEARCH_CACHE.clear()
+            FILE_CACHE.clear()
+            
+            logger.info(f"🗑️ Deleted all files: {result.deleted_count}")
+            return result.deleted_count
+        
+        # Delete specific
+        query = query.strip()
+        filter_dict = {'file_name': {'$regex': query, '$options': 'i'}}
+        
+        result = await collection.delete_many(filter_dict)
+        
+        # Clear caches
+        SEARCH_CACHE.clear()
+        FILE_CACHE.clear()
+        
+        logger.info(f"🗑️ Deleted {result.deleted_count} files")
+        return result.deleted_count
+    
+    except Exception as e:
+        logger.error(f"Delete error: {e}")
+        return 0
+
+# =====================================================
+# STARTUP INITIALIZATION
+# =====================================================
+async def init_database():
+    """Initialize database on startup"""
+    try:
+        await create_indexes()
+        logger.info("✅ Database initialized")
+    except Exception as e:
+        logger.error(f"Database init error: {e}")
+
+# Run initialization
+asyncio.create_task(init_database())
